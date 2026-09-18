@@ -17,6 +17,11 @@ const RETENTION = [
   { value: "7", label: "7 days" }, { value: "30", label: "30 days" }, { value: "90", label: "90 days" }, { value: "never", label: "Never" },
 ];
 
+/** whichever backup happened most recently: a folder mirror or a downloaded file */
+function newest<T extends { at: string }>(a?: T, b?: T): T | undefined {
+  return !a ? b : !b ? a : a.at >= b.at ? a : b;
+}
+
 export default function SettingsPage() {
   const { state, rpc, lock } = useVault();
   const [lockSheet, setLockSheet] = useState(false);
@@ -41,7 +46,7 @@ export default function SettingsPage() {
         <GroupLabel>Keeping it safe</GroupLabel>
         <Group>
           <Row icon={KeyRound} label="Recovery code" description="The way back in if everything else is lost" href="/settings/recovery" />
-          <Row icon={HardDrive} label="Backups" trailing={<BackupPill lastBackup={prefs.lastBackup} />} href="/settings/backups" chevron={false} />
+          <Row icon={HardDrive} label="Backups" trailing={<BackupPill lastBackup={newest(prefs.lastBackup, prefs.lastExport)} />} href="/settings/backups" chevron={false} />
           <Row icon={Timer} label="Lock after" value={lockLabel} onClick={() => setLockSheet(true)} chevron />
           <Row
             icon={Smartphone}

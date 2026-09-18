@@ -1,6 +1,6 @@
 "use client";
 
-import { CircleCheck, Cloud, Download, FolderOpen, HardDrive, TriangleAlert } from "lucide-react";
+import { CircleCheck, Cloud, Download, FileArchive, FolderOpen, HardDrive, TriangleAlert } from "lucide-react";
 import { useEffect, useState } from "react";
 import { ensureWritable, folderBackupSupported, pickBackupFolder, savedBackupFolder } from "@/client/folder-handle";
 import { useVault } from "@/client/vault-provider";
@@ -23,9 +23,11 @@ export default function BackupsPage() {
   const [run, setRun] = useState<Run>({ kind: "idle" });
   const supported = folderBackupSupported();
   const last = state.prefs.lastBackup;
+  const exported = state.prefs.lastExport;
   const health = backupHealth(last);
   const primaryOk = !state.sync?.problem || state.sync.problem === "offline";
-  const copies = (primaryOk ? 1 : 0) + (health === "healthy" ? 1 : 0);
+  // A downloaded file counts only while it's fresh, and only on the family's word that they kept it.
+  const copies = (primaryOk ? 1 : 0) + (health === "healthy" || backupHealth(exported) === "healthy" ? 1 : 0);
 
   useEffect(() => { void savedBackupFolder().then(setFolder); }, []);
 
@@ -52,11 +54,12 @@ export default function BackupsPage() {
     try {
       const archive = await rpc.exportArchive((done, total) =>
         setRun({ kind: "running", label: "Gathering your documents…", value: Math.round((done / Math.max(total, 1)) * 100) }));
-      const url = URL.createObjectURL(new Blob(archive.chunks, { type: "application/octet-stream" }));
+      if (!archive.verified) return setRun({ kind: "failed", problems: archive.problems });
+      const url = URL.createObjectURL(new Blob(archive.chunks, { type: "application/zip" }));
       Object.assign(document.createElement("a"), { href: url, download: archive.fileName }).click();
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
       setRun({ kind: "idle" });
-      toast({ message: `Backup file ready: ${plural(archive.documents, "document")}` });
+      toast({ message: `Backup file checked and saved: ${plural(archive.documents, "document")}. Now put it somewhere safe.` });
     } catch {
       setRun({ kind: "failed", problems: ["The backup file couldn't be made. Check your internet connection and try again."] });
     }
@@ -72,7 +75,9 @@ export default function BackupsPage() {
       <p className="flex items-start gap-2 text-label">
         <Icon icon={copies >= 2 ? CircleCheck : TriangleAlert} className={copies >= 2 ? "mt-0.5 size-5 text-good" : "mt-0.5 size-5 text-warn"} />
         <span>
-          {copies >= 2 ? "2 independent copies available." : copies === 1 ? "1 copy. If the storage account is lost, so are the documents." : "No healthy copy right now."}
+          {copies >= 2
+            ? health === "healthy" ? "2 independent copies available." : "2 copies, if the backup file you downloaded is somewhere safe."
+            : copies === 1 ? "1 copy. If the storage account is lost, so are the documents." : "No healthy copy right now."}
         </span>
       </p>
 
@@ -94,6 +99,12 @@ export default function BackupsPage() {
             trailing={primaryOk
               ? <StatusPill tone="good" icon={CircleCheck}>Healthy</StatusPill>
               : <StatusPill tone="danger" icon={TriangleAlert}>Needs attention</StatusPill>}
+          />
+          <Row
+            icon={FileArchive}
+            label="Backup file"
+            description={exported ? `${plural(exported.documents, "document")} · Downloaded ${formatRelative(exported.at)}` : "A .zip to keep in Google Drive, on a USB stick, anywhere"}
+            trailing={<BackupPill lastBackup={exported} />}
           />
           <Row
             icon={HardDrive}
@@ -128,13 +139,13 @@ export default function BackupsPage() {
           <Row
             icon={Download}
             label="Download a backup file"
-            description="One file with everything in it, still locked. Keep it on a drive."
+            description="One .zip with everything in it, still locked. Upload it to Google Drive, or keep it on a drive."
             onClick={() => (running ? undefined : void download())}
             chevron={false}
           />
         </Group>
         <p className="px-1 pt-2 text-callout text-ink-3">
-          A backup is an exact copy of what&apos;s in your storage: locked files with meaningless names. It opens with the family password or the recovery code, and nothing else.
+          A backup is an exact copy of what&apos;s in your storage: locked files with meaningless names. It&apos;s safe to keep anywhere, because it opens with the family password or the recovery code and nothing else. To use it, choose &ldquo;Restore from a backup&rdquo; when setting the vault up again.
         </p>
       </Section>
 

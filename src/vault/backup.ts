@@ -176,7 +176,7 @@ export async function verifyBackup(
 
 // ───────────────────────── restore (§28) ─────────────────────────
 
-/** Anything that can hand back the files of a backup: a folder, or an unpacked .fvault. */
+/** Anything that can hand back the files of a backup: a folder, or an unzipped backup file. */
 export interface BackupReader {
   get(path: string): Promise<Bytes | null>;
   list(): Promise<string[]>;

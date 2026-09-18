@@ -49,6 +49,8 @@ export interface DevicePrefs {
   /** ids opened on this device, most recent first */
   recent: string[];
   lastBackup?: { at: string; destination: string; documents: number; verified: boolean };
+  /** the last backup file made on this device. Where it went after that, only the family knows. */
+  lastExport?: { at: string; documents: number; verified: boolean };
   /** how often the chosen folder is refreshed without being asked (§27.4) */
   backupEvery: "change" | "daily" | "weekly" | "manual";
 }
@@ -668,7 +670,8 @@ export class VaultSession {
    * with nothing compressed (ciphertext doesn't), so any tool can open it and
    * see exactly how little it says.
    */
-  async exportArchive(onProgress?: (done: number, total: number) => void): Promise<{ chunks: Bytes[]; fileName: string; documents: number }> {
+  async exportArchive(onProgress?: (done: number, total: number) => void): Promise<{ chunks: Bytes[]; fileName: string; documents: number; verified: boolean; problems: string[] }> {
+    if (!this.vmk) throw new Error("locked");
     const engine = this.requireEngine();
     await engine.sync();
     const objects = await this.api.listObjects();
@@ -699,8 +702,23 @@ export class VaultSession {
     }
     zip.end();
     onProgress?.(total, total);
+
+    // A file nobody has tried to open is a rumour, not a backup (§27.5). Unzip what
+    // was just built and check it the way a restore would: the index opens with this
+    // vault's key, every document it lists is inside, every label reads.
+    const whole = new Uint8Array(chunks.reduce((n, c) => n + c.length, 0));
+    let at = 0;
+    for (const c of chunks) { whole.set(c, at); at += c.length; }
+    const plan = await planRestore(readerFromFiles(unzipSync(whole)), this.vmk);
+    const documents = Object.keys(engine.index.entries).length;
+    const problems = [...plan.problems];
+    if (plan.objects.length !== objects.length) problems.push("Some documents didn't make it into the file.");
+    const verified = problems.length === 0;
+
+    await this.setPrefs({ lastExport: { at: new Date().toISOString(), documents, verified } });
+    // A plain .zip: any cloud drive takes it, any tool opens it, and all it shows is locked files with meaningless names.
     const day = istDateStamp(); // the family's date, not UTC's: at 3 am IST those differ
-    return { chunks, fileName: `family-vault-backup-${day}.fvault`, documents: Object.keys(engine.index.entries).length };
+    return { chunks: [whole as Bytes], fileName: `family-vault-backup-${day}.zip`, documents, verified, problems };
   }
 
   // ───────────────────────────── restore (§28) ─────────────────────────────

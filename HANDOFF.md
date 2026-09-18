@@ -63,7 +63,7 @@ page (React)  ──RPC──▶  vault.worker  ──fetch──▶  /api/*  �
 | B-11 | Metadata pads to **4 KB** (1 KB still leaked "long note"; a test caught it) |
 | B-13/14 | Fixed Argon2id 64 MiB/t=3/p=1 via `hash-wasm` |
 | B-15 CSP | No nonces. Static pages + per-route sha-256 hashes of Next's inline scripts, two-pass build |
-| B-17 backups | Client-side only: folder mirror + `.fvault`. No cloud mirror |
+| B-17 backups | Client-side only: folder mirror + `.zip`. No cloud mirror |
 | B-20 | Setup's test object is deleted after it passes |
 
 Deviations not in Appendix B: object ids travel in a signed `x-fv-object` header, not the URL (hosts log URLs); plain `fetch` to GitHub instead of Octokit; `PUT` with client-made ids instead of `POST /api/objects` (idempotent retries); **all dates and times display in IST** regardless of device clock (`src/lib/format.ts`; never use local `Date` getters for display).
@@ -75,7 +75,7 @@ Deviations not in Appendix B: object ids travel in a signed `x-fv-object` header
 | Crypto, container, padding, recovery code, envelopes | unit tests |
 | Merge | property tests: commutative, associative, idempotent, nothing lost except to a tombstone |
 | Engine: CAS conflicts, orphans, rebuild with index deleted, trash/purge, offline queue replay | integration tests, memory provider |
-| Backup mirror + verify, disaster recovery | tests, and once for real in Chrome: `.fvault` → empty deployment → recovery code only → store byte-identical |
+| Backup mirror + verify, disaster recovery | tests, and once for real in Chrome: `.zip` → empty deployment → recovery code only → store byte-identical |
 | GitHub adapter | tests against `src/storage/fake-github.ts`, **and** a real private repo: empty-repo bootstrap, setup, the round-trip self test, uploads, edits, a second device, wrong password, Repair |
 | Nothing readable in the real store | pulled all 34 blobs and the commit log via `gh`: no names, numbers, tags or MIME types anywhere; filenames are `objects/<uuid>.vault`; commit messages are five generic strings |
 | API auth, CSRF, write-auth, CAS, delete precondition, rate limiting | 12 tests over real HTTP; no object ids in request logs |

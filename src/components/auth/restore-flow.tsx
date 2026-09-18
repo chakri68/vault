@@ -104,7 +104,7 @@ export function RestoreFlow({ onBack }: { onBack: () => void }) {
         </AuthHeading>
         {error && <Banner tone="danger" title="Couldn't read that">{error}</Banner>}
         <input
-          ref={picker} type="file" accept=".fvault,application/zip,application/octet-stream" className="sr-only" tabIndex={-1} aria-label="Choose a backup file"
+          ref={picker} type="file" accept=".zip,.fvault,application/zip,application/octet-stream" className="sr-only" tabIndex={-1} aria-label="Choose a backup file"
           onChange={async (e) => {
             const file = e.target.files?.[0];
             e.target.value = "";
@@ -112,7 +112,7 @@ export function RestoreFlow({ onBack }: { onBack: () => void }) {
           }}
         />
         <Group>
-          <Row icon={FileArchive} label="Choose a backup file" description="The .fvault file you downloaded" onClick={() => picker.current?.click()} chevron />
+          <Row icon={FileArchive} label="Choose a backup file" description="The family-vault-backup .zip you downloaded" onClick={() => picker.current?.click()} chevron />
           {folderBackupSupported() && <Row icon={FolderOpen} label="Choose a backup folder" description="The folder or drive you backed up to" onClick={() => void chooseFolder()} chevron />}
         </Group>
       </AuthScreen>
