@@ -15,7 +15,7 @@ export const DELETE = api<Params>({ auth: "admin", limit: LIMITS.credentials, wr
   if (id.length > 1024) throw new ApiError(400, "bad-request");
   await updateRegistry((r) => { r.credentials = r.credentials.filter((c) => c.id !== id); });
   for (let attempt = 0; ; attempt++) {
-    const current = await readVaultJson();
+    const current = await readVaultJson(true);
     if (!current) break;
     const envelopes = current.vault.envelopes.filter((e) => e.credentialId !== id);
     if (envelopes.length === current.vault.envelopes.length) break;

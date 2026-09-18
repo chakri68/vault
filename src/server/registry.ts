@@ -56,7 +56,10 @@ export function verifySecret(secret: Buffer, stored: z.infer<typeof SecretHashSc
 }
 
 const g = globalThis as unknown as { __fvRegistry?: { value: Registry; version: string; at: number } | null };
-const TTL_MS = 5_000;
+// Read on nearly every request, and on GitHub a read is about a second. Our own
+// writes refresh the cache immediately; the TTL only bounds how long *another*
+// server instance takes to notice a removed device or a sign-out-everywhere.
+const TTL_MS = 60_000;
 
 export async function loadRegistry(fresh = false): Promise<{ registry: Registry; version: string } | null> {
   const cached = g.__fvRegistry;

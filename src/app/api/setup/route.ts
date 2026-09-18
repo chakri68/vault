@@ -35,7 +35,7 @@ export const POST = api({ auth: "public", limit: LIMITS.setup, maxBody: 256 * 10
     const b = Buffer.from(expected);
     if (a.length !== b.length || !timingSafeEqual(a, b)) throw new ApiError(403, "setup-token");
   }
-  if ((await readVaultJson()) || (await loadRegistry(true))) throw new ApiError(409, "already-initialized");
+  if ((await readVaultJson(true)) || (await loadRegistry(true))) throw new ApiError(409, "already-initialized");
 
   let vaultJson = input.vaultJson;
   if (input.mode === "create") {

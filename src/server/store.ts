@@ -8,11 +8,15 @@ const g = globalThis as unknown as { __fvStore?: StorageProvider };
 
 /** The primary store. One instance per process, so the provider's write queue actually serialises. */
 export async function store(): Promise<StorageProvider> {
-  if (!g.__fvStore) {
-    const cfg = env().storage;
-    if (cfg.provider === "unconfigured") {
-      throw new StorageUnavailableError(`storage isn't configured: ${cfg.missing.join(", ")}`);
-    }
+  const cfg = env().storage;
+  if (cfg.provider === "unconfigured") {
+    throw new StorageUnavailableError(`storage isn't configured: ${cfg.missing.join(", ")}`);
+  }
+  // In development a code reload replaces the class but not this cached instance,
+  // which then quietly lacks whatever was just added. An instance of a class that
+  // no longer exists gets rebuilt. In production the class never changes.
+  const Provider = cfg.provider === "github" ? GitHubStorageProvider : LocalFsStorageProvider;
+  if (!(g.__fvStore instanceof Provider)) {
     g.__fvStore = cfg.provider === "github" ? new GitHubStorageProvider(cfg) : new LocalFsStorageProvider(cfg.dir);
   }
   await g.__fvStore.connect();

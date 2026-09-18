@@ -24,7 +24,7 @@ export const POST = api(
 
     // The envelope first. A key that unlocks but can't sign in yet is a retry; the reverse is a lockout-shaped bug.
     for (let attempt = 0; ; attempt++) {
-      const current = await readVaultJson();
+      const current = await readVaultJson(true);
       if (!current) throw new ApiError(404, "not-found");
       const envelopes = [...current.vault.envelopes.filter((e) => e.credentialId !== credential.id), envelope];
       try {

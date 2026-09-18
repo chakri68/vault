@@ -22,7 +22,7 @@ const Body = z.object({
  */
 export const POST = api({ auth: "admin", limit: LIMITS.credentials, write: true, maxBody: 256 * 1024 }, async ({ body, ifMatch }) => {
   const input = parseJson(body, Body);
-  const current = await readVaultJson();
+  const current = await readVaultJson(true);
   if (!current) throw new ApiError(404, "not-found");
   if (input.vaultJson.vaultId !== current.vault.vaultId) throw new ApiError(400, "bad-request");
 
