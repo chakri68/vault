@@ -3,6 +3,9 @@ import { LIMITS } from "@/server/rate-limit";
 import { store } from "@/server/store";
 import { INDEX_PATH } from "@/vault/index-model";
 
+// A write here is several GitHub API calls in a row. Say how long that may take rather than inherit a platform default.
+export const maxDuration = 60;
+
 const MAX_INDEX = 4 * 1024 * 1024;
 
 export const GET = api({ auth: "session", limit: LIMITS.indexGet }, async () => {

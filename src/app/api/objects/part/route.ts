@@ -7,6 +7,9 @@ import { store } from "@/server/store";
 import { isPreconditionFailed } from "@/storage/provider";
 import { objectPath } from "@/vault/index-model";
 
+// A write here is several GitHub API calls in a row. Say how long that may take rather than inherit a platform default.
+export const maxDuration = 60;
+
 const MAGIC = [0x46, 0x56, 0x4c, 0x54]; // "FVLT"
 
 export const GET = api({ auth: "session", limit: LIMITS.objectGet }, async ({ req }) => {

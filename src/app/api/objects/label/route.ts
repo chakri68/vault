@@ -4,6 +4,9 @@ import { LIMITS } from "@/server/rate-limit";
 import { store } from "@/server/store";
 import { sidecarPath } from "@/vault/index-model";
 
+// A write here is several GitHub API calls in a row. Say how long that may take rather than inherit a platform default.
+export const maxDuration = 60;
+
 export const GET = api({ auth: "session", limit: LIMITS.objectGet }, async ({ req }) => {
   const { data, version } = await (await store()).get(sidecarPath(objectTarget(req).id));
   return binary(data, version);

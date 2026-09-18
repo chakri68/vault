@@ -29,6 +29,11 @@ function collectAssets() {
 }
 const PRECACHE = join("public", "precache.json");
 
+// The PDF engine's files are normally copied by postinstall. A host that restores
+// node_modules from a cache may not run it, and a vault that can't open a PDF is
+// not worth shipping, so copy them again here.
+spawnSync("node", ["scripts/copy-pdfjs.mjs"], { stdio: "inherit" });
+
 const FILE = ".csp-hashes.json";
 const build = () => {
   const r = spawnSync("npx", ["next", "build"], { stdio: "inherit", env: process.env });

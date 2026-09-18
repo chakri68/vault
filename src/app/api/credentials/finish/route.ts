@@ -8,6 +8,9 @@ import { challengeCookieName, clearChallengeCookie, readChallenge } from "@/serv
 import { readVaultJson, writeVaultJson } from "@/server/vault-files";
 import { verifyRegistration } from "@/server/webauthn";
 
+// A write here is several GitHub API calls in a row. Say how long that may take rather than inherit a platform default.
+export const maxDuration = 60;
+
 const Body = z.object({
   response: z.looseObject({ id: z.string().max(1024), type: z.literal("public-key") }),
   envelope: UnlockEnvelopeSchema,

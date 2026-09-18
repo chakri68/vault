@@ -2,6 +2,9 @@ import { ApiError, api, binary } from "@/server/api";
 import { LIMITS } from "@/server/rate-limit";
 import { readVaultJson } from "@/server/vault-files";
 
+// A write here is several GitHub API calls in a row. Say how long that may take rather than inherit a platform default.
+export const maxDuration = 60;
+
 /** vault.json: the wrapped keys. Behind a session, unlike the public config. */
 export const GET = api({ auth: "session", limit: LIMITS.meta }, async () => {
   const vault = await readVaultJson();

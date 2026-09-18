@@ -4,6 +4,9 @@ import { LIMITS, recordAuthFailure, recordAuthSuccess } from "@/server/rate-limi
 import { loadRegistry, verifySecret } from "@/server/registry";
 import { csrfToken, newSession, sessionCookie } from "@/server/session";
 
+// A write here is several GitHub API calls in a row. Say how long that may take rather than inherit a platform default.
+export const maxDuration = 60;
+
 const Body = z.object({ authSecret: z.string().regex(/^[A-Za-z0-9+/]{43}=$/) });
 
 /**

@@ -6,6 +6,9 @@ import { loadRegistry, updateRegistry } from "@/server/registry";
 import { challengeCookieName, clearChallengeCookie, csrfToken, newSession, readChallenge, sessionCookie } from "@/server/session";
 import { verifyAuthentication } from "@/server/webauthn";
 
+// A write here is several GitHub API calls in a row. Say how long that may take rather than inherit a platform default.
+export const maxDuration = 60;
+
 const Body = z.object({ response: z.looseObject({ id: z.string().max(1024), type: z.literal("public-key") }) });
 
 export const POST = api({ auth: "public", limit: LIMITS.authWebauthn, maxBody: 32 * 1024 }, async ({ req, body, ip }) => {

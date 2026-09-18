@@ -6,6 +6,9 @@ import { storeDescription } from "@/server/store";
 import { readVaultJson } from "@/server/vault-files";
 import { relyingParty } from "@/server/webauthn";
 
+// A write here is several GitHub API calls in a row. Say how long that may take rather than inherit a platform default.
+export const maxDuration = 60;
+
 /**
  * The one public route (§6.2). It hands out what a locked client needs to
  * *attempt* an unlock — KDF parameters and salts, which aren't secret — and

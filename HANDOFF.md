@@ -126,6 +126,21 @@ Stores that can't stage answer 501 and the engine falls back to the one-by-one p
 3. Get the owner's yes/no on the Appendix B decisions above, B-9 especially: it decides what parents can and can't do.
 4. Decide whether key rotation is wanted at all before designing it.
 
+## Deploying to Vercel
+
+Same env vars work. What matters:
+
+- **Build command must be `npm run build`** (pinned in `vercel.json`). Plain `next build` skips the second pass, the CSP gets no script hashes, and production renders a blank page.
+- **Every API route sets `maxDuration = 60`.** A GitHub-backed write is several API calls in a row (setup is three commits). Don't rely on a platform default.
+- **Leave the function region in the US** (Vercel's default). GitHub's API is there; each request makes 1–6 GitHub calls, so one India↔US hop plus fast GitHub calls beats Mumbai functions making slow ones.
+- **Set env vars for Production only.** Preview deployments would otherwise share the family's real store. Vercel's preview toolbar is also a third-party script, which the CSP blocks (console noise on previews, nothing else).
+- **Pick the domain first.** With `WEBAUTHN_RP_ID`/`WEBAUTHN_ORIGIN` unset, the passkey domain is whatever host serves the request. Enrol on `something.vercel.app`, move to a custom domain later, and every passkey dies. Set both to the permanent domain.
+- **Set `SETUP_TOKEN`.** Between emptying the store and running setup, anyone who finds the URL could claim it.
+- Keep Vercel Analytics and Speed Insights off: spec says zero analytics, and the CSP would block them anyway.
+- The fine-grained GitHub token expires (a year at most). When it does, the vault keeps opening offline but nothing saves; the app says storage is unavailable. Put the renewal in a calendar.
+- Known softness on serverless: rate limits are per warm instance, and the `registry.json` / `vault.json` caches mean another instance takes up to a minute to notice a changed password or a removed device.
+- After the first deploy, check: `/precache.json` exists (else the offline shell is thinner), `/sw.js` is served as JavaScript, the console shows no CSP violations, and a PDF opens.
+
 ## Things that will bite you
 
 - **The build runs twice** (`scripts/build.mjs`): pass one discovers each page's inline scripts, pass two pins their hashes into a per-route CSP, and it fails if the passes differ. Any page that becomes dynamic loses its hashes and will render blank in production. Keep pages static. `generateBuildId` is fixed for the same reason.

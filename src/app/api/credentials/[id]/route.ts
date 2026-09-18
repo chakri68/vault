@@ -4,6 +4,9 @@ import { LIMITS } from "@/server/rate-limit";
 import { updateRegistry } from "@/server/registry";
 import { readVaultJson, writeVaultJson } from "@/server/vault-files";
 
+// A write here is several GitHub API calls in a row. Say how long that may take rather than inherit a platform default.
+export const maxDuration = 60;
+
 type Params = { id: string };
 
 /**

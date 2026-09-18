@@ -3,6 +3,9 @@ import { LIMITS } from "@/server/rate-limit";
 import { updateRegistry } from "@/server/registry";
 import { clearSessionCookie } from "@/server/session";
 
+// A write here is several GitHub API calls in a row. Say how long that may take rather than inherit a platform default.
+export const maxDuration = 60;
+
 /** Signs every device out, this one included: sessions carry the epoch they were issued under. */
 export const POST = api({ auth: "admin", limit: LIMITS.credentials, write: true }, async () => {
   await updateRegistry((r) => { r.sessionEpoch += 1; });

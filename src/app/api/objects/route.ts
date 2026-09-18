@@ -6,6 +6,9 @@ import { PreconditionFailedError } from "@/storage/provider";
 import { INDEX_PATH } from "@/vault/index-model";
 import { deleteObjectFiles, groupObjects } from "@/vault/remote";
 
+// A write here is several GitHub API calls in a row. Say how long that may take rather than inherit a platform default.
+export const maxDuration = 60;
+
 /**
  * Reconciliation only (§6.5): ids and sizes, for finding orphans and rebuilding
  * the index. The authoritative list is inside the encrypted index.

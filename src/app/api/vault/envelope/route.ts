@@ -5,6 +5,9 @@ import { LIMITS } from "@/server/rate-limit";
 import { hashSecret, updateRegistry } from "@/server/registry";
 import { readVaultJson, writeVaultJson } from "@/server/vault-files";
 
+// A write here is several GitHub API calls in a row. Say how long that may take rather than inherit a platform default.
+export const maxDuration = 60;
+
 const Body = z.object({
   kind: z.enum(["password", "recovery-code"]),
   vaultJson: VaultJsonSchema,
