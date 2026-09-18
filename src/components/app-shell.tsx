@@ -11,6 +11,7 @@ import { SetupFlow } from "@/components/auth/setup-flow";
 import { useSetupInProgress } from "@/components/auth/setup-state";
 import { StorageProblem } from "@/components/auth/storage-problem";
 import { LaunchIntent, OfflineWarmUp, ServiceWorkerRegistration } from "@/components/pwa/service-worker";
+import { AutoBackup } from "@/components/settings/auto-backup";
 import { AppMark, BottomBar, Button, Icon, ToastProvider, cn } from "@/components/ui";
 import { AddSheet } from "@/components/upload/add-sheet";
 import { setPendingFiles } from "@/components/upload/pending-files";
@@ -126,6 +127,7 @@ function Unlocked({ children }: { children: React.ReactNode }) {
       <NewPasswordPrompt />
       <LaunchIntent />
       <OfflineWarmUp />
+      <AutoBackup />
       {dragging && (
         <div aria-hidden className="pointer-events-none fixed inset-0 z-40 grid place-items-center bg-scrim">
           <p className="rounded-lg bg-surface px-6 py-4 text-heading shadow-float">Drop to add to your vault</p>

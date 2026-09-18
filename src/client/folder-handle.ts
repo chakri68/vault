@@ -41,6 +41,13 @@ export async function ensureWritable(handle: FileSystemDirectoryHandle): Promise
   return (await h.requestPermission({ mode: "readwrite" })) === "granted";
 }
 
+/** Asks nothing of the user: true only if the browser already lets us write there. For unattended backups. */
+export async function alreadyWritable(handle: FileSystemDirectoryHandle): Promise<boolean> {
+  const h = handle as WithPermission;
+  if (!h.queryPermission) return true;
+  return (await h.queryPermission({ mode: "readwrite" }).catch(() => "denied")) === "granted";
+}
+
 export async function forgetBackupFolder(): Promise<void> {
   await (await db()).delete("handles", "backup").catch(() => {});
 }

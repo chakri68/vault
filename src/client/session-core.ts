@@ -49,9 +49,13 @@ export interface DevicePrefs {
   /** ids opened on this device, most recent first */
   recent: string[];
   lastBackup?: { at: string; destination: string; documents: number; verified: boolean };
+  /** how often the chosen folder is refreshed without being asked (§27.4) */
+  backupEvery: "change" | "daily" | "weekly" | "manual";
 }
 
-const DEFAULT_PREFS: DevicePrefs = { keepEverythingOffline: true, pins: [], lockAfterMinutes: 5, activeProfileId: null, recent: [] };
+const DEFAULT_PREFS: DevicePrefs = {
+  keepEverythingOffline: true, pins: [], lockAfterMinutes: 5, activeProfileId: null, recent: [], backupEvery: "change",
+};
 
 export type UnlockFailure =
   | "wrong"            // same answer for every kind of wrong (§40.6)

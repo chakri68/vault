@@ -8,7 +8,7 @@ import { createVaultWorker } from "./worker-client";
 const INITIAL: VaultState = {
   phase: "loading", config: null, index: null, sync: null, role: null, via: null,
   needsSession: false, needsRepair: false, onDevice: [],
-  prefs: { keepEverythingOffline: true, pins: [], lockAfterMinutes: 5, activeProfileId: null, recent: [] },
+  prefs: { keepEverythingOffline: true, pins: [], lockAfterMinutes: 5, activeProfileId: null, recent: [], backupEvery: "change" },
   cacheBytes: 0,
 };
 

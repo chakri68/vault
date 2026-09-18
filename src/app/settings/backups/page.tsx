@@ -6,7 +6,8 @@ import { ensureWritable, folderBackupSupported, pickBackupFolder, savedBackupFol
 import { useVault } from "@/client/vault-provider";
 import { BackupPill, backupHealth } from "@/components/settings/backup-pill";
 import {
-  Banner, Button, Group, GroupLabel, Icon, ProgressBar, Row, Screen, ScreenHeader, Section, StatusPill, TopBar, useToast,
+  Banner, Button, Group, GroupLabel, Icon, ProgressBar, Row, Screen, ScreenHeader, Section, SegmentedControl, StatusPill,
+  TopBar, useToast,
 } from "@/components/ui";
 import { formatRelative, plural } from "@/lib/format";
 
@@ -102,6 +103,23 @@ export default function BackupsPage() {
           />
         </Group>
       </Section>
+
+      {supported && folder && (
+        <Section>
+          <GroupLabel>Back up to the folder</GroupLabel>
+          <SegmentedControl
+            aria-label="Back up to the folder" fullWidth value={state.prefs.backupEvery}
+            onValueChange={(v) => void rpc.setPrefs({ backupEvery: v })}
+            options={[
+              { value: "change", label: "After changes" }, { value: "daily", label: "Daily" },
+              { value: "weekly", label: "Weekly" }, { value: "manual", label: "Manual" },
+            ]}
+          />
+          <p className="px-1 pt-2 text-callout text-ink-3">
+            Backups run while Family Vault is open on this computer, and only while the browser still has permission to the folder. If this says Stale, open the app here and press Back up now.
+          </p>
+        </Section>
+      )}
 
       <Section>
         <GroupLabel>Make a copy</GroupLabel>
