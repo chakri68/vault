@@ -49,7 +49,11 @@ export class GitHubStorageProvider implements StorageProvider {
   private queue: Promise<unknown> = Promise.resolve();
   private verified = false;
 
-  constructor(private cfg: GitHubConfig) {
+  constructor(
+    private cfg: GitHubConfig,
+    /** swapped for an in-memory GitHub in tests */
+    private fetchImpl: (url: string, init: RequestInit) => Promise<Response> = (url, init) => fetch(url, init),
+  ) {
     // owner and repo come from server env only; nothing a client sends can retarget the store
     for (const v of [cfg.owner, cfg.repo, cfg.branch]) {
       if (!/^[A-Za-z0-9._-]+$/.test(v)) throw new Error("invalid GitHub repository configuration");
@@ -65,7 +69,7 @@ export class GitHubStorageProvider implements StorageProvider {
   private async request(method: string, path: string, body?: unknown, accept = "application/vnd.github+json") {
     let res: Response;
     try {
-      res = await fetch(`${API}/repos/${this.cfg.owner}/${this.cfg.repo}${path}`, {
+      res = await this.fetchImpl(`${API}/repos/${this.cfg.owner}/${this.cfg.repo}${path}`, {
         method,
         headers: {
           authorization: `Bearer ${this.cfg.token}`,
