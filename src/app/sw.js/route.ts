@@ -60,10 +60,25 @@ self.addEventListener("install", (event) => {
 
 self.addEventListener("activate", (event) => {
   event.waitUntil((async () => {
+    // This origin is the vault's alone, so any cache that isn't ours is a leftover:
+    // an older build's shell, or a different app that used to live on this domain.
+    // Whatever it holds, it goes. (If that app cached anything private, all the more reason.)
+    let foreign = false;
     for (const name of await caches.keys()) {
-      if (name.startsWith("fv-shell-") && name !== SHELL) await caches.delete(name);
+      if (name === SHELL || name === STATIC) continue;
+      if (!name.startsWith("fv-")) foreign = true;
+      await caches.delete(name);
     }
     await self.clients.claim();
+    // Taking over from a different app means the open tab is showing *its* page,
+    // asking for files that no longer exist: a blank screen that a family member
+    // can't be expected to debug. Reload those tabs onto the real thing, once.
+    // Never on an ordinary update: a reload locks the vault.
+    if (foreign) {
+      for (const client of await self.clients.matchAll({ type: "window" })) {
+        client.navigate(client.url).catch(() => {});
+      }
+    }
   })());
 });
 
@@ -104,13 +119,24 @@ async function networkFirst(request, url) {
   }
 }
 
+// A worker learns its chunk list from its own URL's #fragment. A Response that
+// carries a url of its own (anything from fetch or the cache does) replaces the
+// worker's location with that url, and the fragment is gone: the worker starts,
+// finds no config, and dies silently, leaving the app blank. A re-wrapped
+// Response has no url, so the worker keeps the one it was asked for. Headers are
+// copied across because the worker's own CSP comes from them.
+const forWorker = (request, response) =>
+  request.destination === "worker" || request.destination === "sharedworker" || request.url.includes("#")
+    ? new Response(response.body, { status: response.status, statusText: response.statusText, headers: response.headers })
+    : response;
+
 async function cacheFirst(request) {
   const cache = await caches.open(STATIC);
   const hit = await cache.match(bare(request));
-  if (hit) return hit;
+  if (hit) return forWorker(request, hit);
   const response = await fetch(request);
   if (response.ok) await cache.put(bare(request), response.clone());
-  return response;
+  return forWorker(request, response);
 }
 
 self.addEventListener("fetch", (event) => {
