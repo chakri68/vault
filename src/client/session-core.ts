@@ -208,6 +208,8 @@ export class VaultSession {
     await this.local.putBlob(BLOB.vaultJson, fresh.data);
     this.vault = { json: fresh.vault, version: fresh.version };
     await this.finishUnlock(p.vmk, "setup");
+    // they just typed the code back, so the six-month "can you still find it?" clock starts now (§20.4)
+    await this.engine?.setSetting("recoveryCheckedAt", new Date().toISOString());
     await this.loadConfig();
   }
 
@@ -636,6 +638,7 @@ export class VaultSession {
     const vaultJson = { ...current.vault, envelopes: [...current.vault.envelopes.filter((e) => e.kind !== "recovery-code"), next.envelope] };
     await this.api.replaceEnvelope("recovery-code", vaultJson, toBase64(next.authSecret), current.version);
     this.pendingRecoveryCode = null;
+    await this.engine?.setSetting("recoveryCheckedAt", new Date().toISOString());
     if (this.reauth?.kind === "recovery") this.reauth.authSecret = toBase64(next.authSecret);
     await this.fetchVaultJson(true);
     await this.loadConfig();

@@ -86,7 +86,7 @@ describe.skipIf(!BASE)("API security, over HTTP", () => {
   it("every route rejects a caller with no session (§40.7)", async () => {
     const routes: Array<[string, string]> = [
       ["GET", "/api/vault/meta"], ["GET", "/api/vault/index"], ["PUT", "/api/vault/index"],
-      ["POST", "/api/vault/envelope"], ["GET", "/api/objects"], ["DELETE", "/api/objects"],
+      ["POST", "/api/vault/envelope"], ["PUT", "/api/vault/stage?kind=index"], ["POST", "/api/vault/commit"], ["GET", "/api/objects"], ["DELETE", "/api/objects"],
       ["GET", "/api/objects/part"], ["PUT", "/api/objects/part"], ["GET", "/api/objects/label"],
       ["PUT", "/api/objects/label"], ["GET", "/api/credentials"], ["POST", "/api/credentials/begin"],
       ["POST", "/api/credentials/finish"], ["DELETE", "/api/credentials/abc"], ["PATCH", "/api/credentials/abc"],
@@ -176,6 +176,12 @@ describe.skipIf(!BASE)("API security, over HTTP", () => {
     const current = await admin.api.getIndex();
     expect(await status(admin.api.deleteObject(victim.id, current!.version))).toBe(200);
     expect((await admin.api.listObjects()).some((o) => o.id === victim.id)).toBe(false);
+  });
+
+  it("a store that can't stage says so, and the engine carries on the long way", async () => {
+    // local-fs has no staging: 501, never a silent success
+    expect(await status(admin.api.commitStaged([{ kind: "index", token: "x" }, { kind: "label", id: newId(), token: "y" }], {}))).toBe(501);
+    expect(await admin.api.stage({ kind: "index" }, new Uint8Array(80) as Bytes)).toBeNull();
   });
 
   it("rejects paths and payloads that aren't what they claim", async () => {

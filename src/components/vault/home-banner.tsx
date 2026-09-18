@@ -1,11 +1,12 @@
 "use client";
 
-import { CloudOff, FileQuestion } from "lucide-react";
+import { CloudOff, FileQuestion, KeyRound } from "lucide-react";
 import { useEffect, useState } from "react";
 import { PasskeyCancelled, getAssertion, passkeysAvailable, unlockWords } from "@/client/passkey";
 import { useVault } from "@/client/vault-provider";
 import { Banner, useToast } from "@/components/ui";
-import { plural } from "@/lib/format";
+import { getSetting } from "@/lib/documents";
+import { daysFromToday, plural } from "@/lib/format";
 import type { Orphan } from "@/vault/engine";
 import { cachedOrphans, setCachedOrphans } from "./memory";
 
@@ -180,5 +181,31 @@ export function HomeBanner() {
     );
   }
 
+  // §20.4. An untested backup is a rumour. Twice a year, one family member is asked
+  // whether the paper can still be found. The answer is kept in the vault, not on
+  // this device, so one person saying yes settles it for everyone.
+  const index = state.index;
+  if (index && online && hasSession) {
+    const checked = getSetting<string | null>(index, RECOVERY_CHECKED, null);
+    // a vault with no answer yet starts its clock from its oldest document, or from now
+    const since = checked ?? Object.values(index.entries).map((e) => e.createdAt).sort()[0];
+    if (since && -daysFromToday(since) >= RECOVERY_DRILL_DAYS) {
+      return (
+        <Banner
+          tone="info"
+          icon={KeyRound}
+          title="Can you still find your recovery code?"
+          action={{ label: "Yes, found it", onClick: () => { void rpc.setSetting(RECOVERY_CHECKED, new Date().toISOString()); toast({ message: "Good. We'll ask again in six months." }); } }}
+          secondaryAction={{ label: "No, make a new one", href: "/settings/recovery" }}
+        >
+          It&apos;s the paper you wrote when the vault was set up. If the family password is ever forgotten, it&apos;s the only way back in. Go and look before you answer.
+        </Banner>
+      );
+    }
+  }
+
   return null;
 }
+
+const RECOVERY_CHECKED = "recoveryCheckedAt";
+const RECOVERY_DRILL_DAYS = 180;
