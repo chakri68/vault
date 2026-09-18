@@ -19,9 +19,9 @@ export async function store(): Promise<StorageProvider> {
   return g.__fvStore;
 }
 
-export function storeDescription(): { provider: string; location?: string; missing?: string[] } {
+export function storeDescription(): { provider: string; versioning: boolean; location?: string; missing?: string[] } {
   const cfg = env().storage;
-  if (cfg.provider === "github") return { provider: "GitHub", location: `${cfg.owner}/${cfg.repo}` };
-  if (cfg.provider === "local-fs") return { provider: "A folder on this server", location: cfg.dir };
-  return { provider: "none", missing: cfg.missing };
+  if (cfg.provider === "github") return { provider: "GitHub", versioning: true, location: `${cfg.owner}/${cfg.repo}` };
+  if (cfg.provider === "local-fs") return { provider: "A folder on this server", versioning: false, location: cfg.dir };
+  return { provider: "none", versioning: false, missing: cfg.missing };
 }

@@ -8,7 +8,7 @@ import type { StoredObject, VaultRemote } from "@/vault/remote";
 
 export interface PublicConfig {
   initialized: boolean | null;
-  storage: { ok: boolean; provider?: string; location?: string; problem?: string; missing?: string[] };
+  storage: { ok: boolean; provider?: string; versioning?: boolean; location?: string; problem?: string; missing?: string[] };
   rpId: string;
   maxObjectBytes: number;
   setupTokenRequired: boolean;

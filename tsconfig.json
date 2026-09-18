@@ -42,7 +42,9 @@
     ".next-main/types/**/*.ts",
     ".next-main/dev/types/**/*.ts",
     ".next-restore/types/**/*.ts",
-    ".next-restore/dev/types/**/*.ts"
+    ".next-restore/dev/types/**/*.ts",
+    ".next-dev2/types/**/*.ts",
+    ".next-dev2/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules"

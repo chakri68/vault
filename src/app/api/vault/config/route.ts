@@ -29,7 +29,8 @@ export const GET = api({ auth: "public", limit: LIMITS.config }, async ({ req })
     return json({
       ...base,
       initialized: true,
-      storage: { ok: true },
+      // what kind of storage, and whether it keeps history. Not where: the location is only shown during setup.
+      storage: { ok: true, provider: storeDescription().provider, versioning: storeDescription().versioning },
       formatVersion: vault.vault.formatVersion,
       vaultId: vault.vault.vaultId,
       kdf: password ? { params: password.kdf, salt: password.salt } : null,

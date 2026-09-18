@@ -89,7 +89,7 @@ export default function BackupsPage() {
           <Row
             icon={Cloud}
             label={`${state.config?.storage.provider ?? "Primary storage"}`}
-            description="Primary storage · keeps older versions"
+            description={state.config?.storage.versioning ? "Primary storage · keeps older versions" : "Primary storage"}
             trailing={primaryOk
               ? <StatusPill tone="good" icon={CircleCheck}>Healthy</StatusPill>
               : <StatusPill tone="danger" icon={TriangleAlert}>Needs attention</StatusPill>}
