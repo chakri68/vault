@@ -116,3 +116,21 @@ export function readChallenge(token: string | undefined, kind: PendingChallenge[
   if (!c || c.kind !== kind || c.exp < Date.now()) return null;
   return c.challenge;
 }
+
+/**
+ * A staged blob is just a git sha, and a sha says nothing about what it was
+ * checked as. The token binds it to the slot it was validated for, so bytes
+ * staged as a document part can't be committed as the index.
+ */
+export function stageToken(slot: string, sha: string): string {
+  return `${sha}.${sign(`${slot}|${sha}`, "stage")}`;
+}
+
+export function readStageToken(slot: string, token: string): string | null {
+  const dot = token.indexOf(".");
+  if (dot < 1) return null;
+  const sha = token.slice(0, dot);
+  const a = Buffer.from(token.slice(dot + 1));
+  const b = Buffer.from(sign(`${slot}|${sha}`, "stage"));
+  return /^[0-9a-f]{40,64}$/.test(sha) && a.length === b.length && timingSafeEqual(a, b) ? sha : null;
+}

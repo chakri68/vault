@@ -94,6 +94,11 @@ export class FakeGitHub {
       return this.json(200, { type: "file", sha: blob, size: data.length, encoding: big ? "none" : "base64", content: big ? "" : data.toString("base64") });
     }
 
+    if (path.startsWith("/commits/") && method === "GET") {
+      if (!this.head) return this.json(409, { message: "Git Repository is empty." });
+      return this.json(200, { sha: this.head, commit: { tree: { sha: this.commits.get(this.head)!.tree } } });
+    }
+
     // everything below is the Git Data API, which an empty repository refuses
     if (!this.head && path.startsWith("/git/")) return this.json(409, { message: "Git Repository is empty." });
 
@@ -146,7 +151,7 @@ export class FakeGitHub {
       return this.json(200, { object: { sha: this.head } });
     }
     if (path.startsWith("/git/trees/") && method === "GET") {
-      const tree = this.files();
+      const tree = this.trees.get(path.slice("/git/trees/".length)) ?? this.files();
       return this.json(200, { tree: [...tree].map(([p, sha]) => ({ path: p, type: "blob", sha, size: this.blobs.get(sha)!.length })), truncated: false });
     }
     return this.json(404, { message: `fake: unhandled ${method} ${path}` });

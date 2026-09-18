@@ -14,8 +14,8 @@ export interface GitHubConfig {
 
 interface Change {
   path: string;
-  /** null deletes the path */
-  data: Bytes | null;
+  /** bytes to write, an already-staged blob sha, or null to delete the path */
+  data: Bytes | { staged: string } | null;
 }
 
 interface Precondition {
@@ -197,48 +197,74 @@ export class GitHubStorageProvider implements StorageProvider {
     return next;
   }
 
-  private async commitNow(changes: Change[], preconditions: Precondition[], message: string): Promise<Map<string, string>> {
-    // Blobs are content-addressed and independent of any commit: upload once, reuse across retries.
-    const blobs = new Map<string, string>();
-    for (const c of changes) {
-      if (!c.data) continue;
-      const { status, data } = await this.json<{ sha: string }>("POST", "/git/blobs", { content: toBase64(c.data), encoding: "base64" });
-      if (status === 409 || status === 404) {
-        // an empty repository has no object database to write to yet
-        await this.bootstrap();
-        return this.commitNow(changes, preconditions, message);
-      }
-      if (status !== 201) throw new StorageUnavailableError();
-      blobs.set(c.path, data.sha);
+  /**
+   * Uploads bytes as a git blob without committing anything. Blobs are
+   * content-addressed and unreferenced until a tree names them, so this is safe
+   * to do in parallel, ahead of time, and to abandon.
+   */
+  async stageBlob(data: Bytes): Promise<string> {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const { status, data: res } = await this.json<{ sha: string }>("POST", "/git/blobs", { content: toBase64(data), encoding: "base64" });
+      if (status === 201) return res.sha;
+      // an empty repository has no object database to write to yet
+      if (status === 409 || status === 404) { await this.bootstrap(); continue; }
+      throw new StorageUnavailableError();
     }
+    throw new StorageUnavailableError();
+  }
+
+  /**
+   * Several files, one commit: a document's parts, its label and the index land
+   * together or not at all. No orphans, and one commit in the history instead
+   * of N + 2.
+   */
+  async commitStaged(files: Array<{ path: string; staged: string; ifMatch?: string; ifNoneMatch?: "*" }>): Promise<Map<string, string>> {
+    files.forEach((f) => assertAllowedPath(f.path));
+    return this.commit(
+      files.map((f) => ({ path: f.path, data: { staged: f.staged } })),
+      files.filter((f) => f.ifMatch !== undefined || f.ifNoneMatch).map((f) => ({ path: f.path, ifMatch: f.ifMatch, ifNoneMatch: f.ifNoneMatch })),
+      "vault: add documents",
+    );
+  }
+
+  private async commitNow(changes: Change[], preconditions: Precondition[], message: string): Promise<Map<string, string>> {
+    // Blobs first, all at once: they don't depend on the head, and they survive a retry.
+    const blobs = new Map<string, string>();
+    await Promise.all(changes.map(async (c) => {
+      if (!c.data) return;
+      blobs.set(c.path, "staged" in c.data ? c.data.staged : await this.stageBlob(c.data));
+    }));
 
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-      const head = await this.json<{ object: { sha: string } }>("GET", `/git/ref/heads/${encodeURIComponent(this.cfg.branch)}`);
-      if (head.status === 404 || head.status === 409) {
+      // head commit and its tree in one call
+      const head = await this.json<{ sha: string; commit: { tree: { sha: string } } }>(
+        "GET", `/commits/${encodeURIComponent(this.cfg.branch)}`,
+      );
+      if (head.status === 404 || head.status === 409 || head.status === 422) {
         await this.bootstrap();
         continue;
       }
       if (head.status !== 200) throw new StorageUnavailableError();
-      const headSha = head.data.object.sha;
+      const headSha = head.data.sha;
+
+      // Every path at that head, in one call: answers all the preconditions and
+      // says which deletions are real (deleting what isn't there fails the tree call).
+      const listing = await this.json<{ tree?: Array<{ path: string; type: string; sha: string }> }>(
+        "GET", `/git/trees/${head.data.commit.tree.sha}?recursive=1`,
+      );
+      if (listing.status !== 200 || !listing.data?.tree) throw new StorageUnavailableError();
+      const current = new Map(listing.data.tree.filter((e) => e.type === "blob").map((e) => [e.path, e.sha]));
 
       for (const p of preconditions) {
-        const current = await this.blobSha(p.path, headSha);
-        if (p.ifNoneMatch === "*" && current) throw new PreconditionFailedError();
-        if (p.ifMatch !== undefined && current !== p.ifMatch) throw new PreconditionFailedError();
+        const sha = current.get(p.path);
+        if (p.ifNoneMatch === "*" && sha) throw new PreconditionFailedError();
+        if (p.ifMatch !== undefined && sha !== p.ifMatch) throw new PreconditionFailedError();
       }
-
-      // deleting something that isn't there would make the tree call fail; drop those
-      const live: Change[] = [];
-      for (const c of changes) {
-        if (c.data || (await this.blobSha(c.path, headSha))) live.push(c);
-      }
+      const live = changes.filter((c) => c.data || current.has(c.path));
       if (live.length === 0) return blobs;
 
-      const parent = await this.json<{ tree: { sha: string } }>("GET", `/git/commits/${headSha}`);
-      if (parent.status !== 200) throw new StorageUnavailableError();
-
       const tree = await this.json<{ sha: string }>("POST", "/git/trees", {
-        base_tree: parent.data.tree.sha,
+        base_tree: head.data.commit.tree.sha,
         tree: live.map((c) => ({ path: c.path, mode: "100644", type: "blob", sha: c.data ? blobs.get(c.path) : null })),
       });
       if (tree.status !== 201) throw new StorageUnavailableError();

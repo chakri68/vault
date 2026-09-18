@@ -24,7 +24,29 @@ export interface VaultRemote {
   deleteObject(id: string, indexVersion: string): Promise<void>;
 
   listObjects(): Promise<StoredObject[]>;
+
+  /**
+   * Optional. Upload bytes without making them part of the vault yet; null means
+   * this store can't, and the engine falls back to writing files one by one.
+   */
+  stage?(item: StageItem, data: Bytes): Promise<string | null>;
+  /**
+   * Optional. Everything staged lands in one atomic write: a document's parts,
+   * its label and the index together, or none of it. New files are create-only;
+   * the index is compare-and-swap, as ever.
+   */
+  commitStaged?(items: StagedItem[], opts: { indexIfMatch?: string }): Promise<{ indexVersion: string }>;
 }
+
+/** One file of a batch: a part of a document, its label, or the index. */
+export type StageItem =
+  | { kind: "part"; id: string; part: number }
+  | { kind: "label"; id: string }
+  | { kind: "index" };
+export type StagedItem = StageItem & { token: string };
+
+export const stagePath = (item: StageItem): string =>
+  item.kind === "index" ? INDEX_PATH : item.kind === "label" ? sidecarPath(item.id) : objectPath(item.id, item.part);
 
 export interface StoredObject {
   id: string;
@@ -110,4 +132,32 @@ export class ProviderRemote implements VaultRemote {
   async listObjects() {
     return groupObjects(await this.provider.list("objects/"));
   }
+
+  private get batching(): BatchingProvider | null {
+    const p = this.provider as Partial<BatchingProvider>;
+    return p.stageBlob && p.commitStaged ? (p as BatchingProvider) : null;
+  }
+
+  async stage(_item: StageItem, data: Bytes): Promise<string | null> {
+    return this.batching ? this.batching.stageBlob(data) : null;
+  }
+
+  async commitStaged(items: StagedItem[], opts: { indexIfMatch?: string }) {
+    const versions = await commitStagedItems(this.batching!, items, opts.indexIfMatch);
+    return { indexVersion: versions.get(INDEX_PATH)! };
+  }
+}
+
+export interface BatchingProvider {
+  stageBlob(data: Bytes): Promise<string>;
+  commitStaged(files: Array<{ path: string; staged: string; ifMatch?: string; ifNoneMatch?: "*" }>): Promise<Map<string, string>>;
+}
+
+/** Shared by the API route and the tests: which precondition each kind of file gets. */
+export function commitStagedItems(provider: BatchingProvider, items: StagedItem[], indexIfMatch: string | undefined) {
+  return provider.commitStaged(items.map((item) => ({
+    path: stagePath(item),
+    staged: item.token,
+    ...(item.kind === "index" && indexIfMatch ? { ifMatch: indexIfMatch } : { ifNoneMatch: "*" as const }),
+  })));
 }

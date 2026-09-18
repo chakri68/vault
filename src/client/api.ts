@@ -4,7 +4,7 @@ import { hmacSha256 } from "@/crypto/hkdf";
 import { type VaultJson, VaultJsonSchema } from "@/schemas/vault";
 import type { KdfParams } from "@/crypto/kdf";
 import { NotFoundError, PreconditionFailedError, isNotFound } from "@/storage/provider";
-import type { StoredObject, VaultRemote } from "@/vault/remote";
+import type { StageItem, StagedItem, StoredObject, VaultRemote } from "@/vault/remote";
 
 export interface PublicConfig {
   initialized: boolean | null;
@@ -226,6 +226,25 @@ export class ApiClient implements VaultRemote {
 
   async deleteObject(id: string, indexVersion: string) {
     await this.call("DELETE", "/api/objects", { write: true, ifMatch: indexVersion, object: id });
+  }
+
+  async stage(item: StageItem, data: Bytes): Promise<string | null> {
+    try {
+      const res = await this.call("PUT", `/api/vault/stage?kind=${item.kind}`, {
+        body: data, write: true,
+        object: item.kind === "index" ? undefined : item.id,
+        part: item.kind === "part" ? item.part : undefined,
+      });
+      return ((await res.json()) as { token: string }).token;
+    } catch (e) {
+      if (e instanceof HttpError && e.status === 501) return null; // this store writes files one at a time
+      throw e;
+    }
+  }
+
+  async commitStaged(items: StagedItem[], opts: { indexIfMatch?: string }): Promise<{ indexVersion: string }> {
+    const res = await this.call("POST", "/api/vault/commit", { body: { items }, write: true, ifMatch: opts.indexIfMatch });
+    return (await res.json()) as { indexVersion: string };
   }
 
   async listObjects(): Promise<StoredObject[]> {

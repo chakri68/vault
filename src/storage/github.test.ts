@@ -127,8 +127,70 @@ describe("GitHub adapter, against an in-memory Git Data API", () => {
       expect(log.includes(needle), needle).toBe(false);
     }
     expect(new Set(gh.messages)).toEqual(new Set([
-      "vault: initialise store", "vault: update index", "vault: add object", "vault: remove object",
+      "vault: initialise store", "vault: update index", "vault: add documents", "vault: add object", "vault: remove object",
     ]));
+  });
+
+  it("an upload is one atomic commit: parts, labels and index together (B-16)", async () => {
+    const gh = new FakeGitHub();
+    const vmk = await importAesKey(generateVmk());
+    const engine = new VaultEngine({
+      remote: new ProviderRemote(new GitHubStorageProvider(cfg, gh.fetch)), local: new MemoryLocalStore(), vmk, partSize: 8 * 1024,
+    });
+    await engine.open();
+    for (let i = 0; i < 20 && !(await engine.sync()); i++) await new Promise((r) => setTimeout(r, 10));
+    const before = gh.messages.length;
+
+    const docs = [30_000, 500, 12_000].map((n, i) => ({
+      content: randomBytes(n), extension: "pdf", mimeType: "application/pdf", meta: { name: `Doc ${i}`, ownerProfileIds: [], tags: [] },
+    }));
+    const { ids, synced } = await engine.addDocuments(docs);
+    expect(synced).toBe(true);
+    expect(gh.messages.slice(before)).toEqual(["vault: add documents"]); // eight files, one commit
+
+    const files = [...gh.files().keys()];
+    for (const id of ids) {
+      expect(files).toContain(objectPath(id));
+      expect(files).toContain(sidecarPath(id));
+    }
+    expect(files.filter((f) => f.startsWith(`objects/${ids[0]}.p`)).length).toBeGreaterThan(0); // the multi-part one came along too
+
+    const other = new VaultEngine({ remote: new ProviderRemote(new GitHubStorageProvider(cfg, gh.fetch)), local: new MemoryLocalStore(), vmk });
+    await other.open();
+    expect(Object.keys(other.index.entries).sort()).toEqual([...ids].sort());
+    expect(equalBytes((await other.fetchDocument(ids[0])).content, docs[0].content)).toBe(true);
+  });
+
+  it("a batch that loses the index race merges and lands on top; nobody's upload is lost", async () => {
+    const gh = new FakeGitHub();
+    const vmk = await importAesKey(generateVmk());
+    const device = async () => {
+      const e = new VaultEngine({ remote: new ProviderRemote(new GitHubStorageProvider(cfg, gh.fetch)), local: new MemoryLocalStore(), vmk });
+      await e.open();
+      for (let i = 0; i < 20 && !(await e.sync()); i++) await new Promise((r) => setTimeout(r, 10));
+      return e;
+    };
+    const mom = await device();
+    const dad = await device();
+    const doc = (name: string) => ({ content: randomBytes(900), extension: "pdf", mimeType: "application/pdf", meta: { name, ownerProfileIds: [], tags: [] } });
+    const [a, b] = await Promise.all([mom.addDocuments([doc("Mom's"), doc("Mom's too")]), dad.addDocuments([doc("Dad's")])]);
+    for (const e of [mom, dad]) for (let i = 0; i < 30 && !(await e.sync()); i++) await new Promise((r) => setTimeout(r, 20));
+
+    const fresh = await device();
+    expect(Object.keys(fresh.index.entries).sort()).toEqual([...a.ids, ...b.ids].sort());
+    expect(gh.forcePushes).toBe(0);
+    expect(gh.messages.filter((m) => m === "vault: add documents").length).toBe(2);
+  });
+
+  it("a stage token can't be moved to another slot, and staged bytes can't overwrite anything", async () => {
+    const { provider } = make();
+    const id = newId();
+    const first = await provider.stageBlob(randomBytes(64) as Bytes);
+    await provider.commitStaged([{ path: objectPath(id), staged: first, ifNoneMatch: "*" }]);
+    const second = await provider.stageBlob(randomBytes(64) as Bytes);
+    expect(isPreconditionFailed(await caught(provider.commitStaged([{ path: objectPath(id), staged: second, ifNoneMatch: "*" }])))).toBe(true);
+    await expect(provider.commitStaged([{ path: "../escape", staged: second }])).rejects.toThrow("path not allowed");
+    await expect(provider.commitStaged([{ path: objectPath(newId()), staged: "0".repeat(40) }])).rejects.toThrow(); // a sha that was never staged
   });
 
   it("runs the whole engine: two devices, a conflict, a rebuild with the index gone", async () => {

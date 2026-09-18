@@ -13,10 +13,11 @@ import {
 } from "./index-model";
 import { BLOB, type LocalStore } from "./local-store";
 import { mergeEntry, mergeIndexes, pruneTombstones, sameIndex, stableStringify } from "./merge";
-import type { VaultRemote } from "./remote";
+import type { StageItem, StagedItem, VaultRemote } from "./remote";
 
 const DAY = 86_400_000;
 const MAX_CAS_ATTEMPTS = 5;
+const REBUILD_CONCURRENCY = 8;
 
 export class IndexUnreadableError extends Error {
   constructor() {
@@ -111,6 +112,8 @@ export class VaultEngine {
   private syncAgain = false;
   private syncChain: Promise<boolean> = Promise.resolve(true);
   private closed = false;
+  /** set once a store says it can't stage; from then on files are written one by one */
+  private batchUnsupported = false;
   /** bumped on every local change, so an in-flight push can tell its snapshot went stale */
   private revision = 0;
 
@@ -475,20 +478,27 @@ export class VaultEngine {
     let unreadable = 0;
     let done = 0;
 
-    for (const o of stored) {
-      try {
-        const found = await this.readEntryFromStore(o.id, o.hasSidecar, (hints, entry) => {
-          for (const p of hints.people ?? []) people.set(p.id, p);
-          if (hints.categoryName && entry.category) categoryNames.set(entry.category, hints.categoryName);
-        });
-        if (found) rebuilt.entries[o.id] = found;
-        else unreadable++;
-      } catch (e) {
-        if (e instanceof OfflineError) throw e;
-        unreadable++;
+    // Each label is its own round trip, and on GitHub a round trip is about a
+    // second. Eight at a time keeps 200 documents under half a minute (§37)
+    // without leaning on the store's rate limit.
+    const queue = [...stored];
+    const worker = async () => {
+      for (let o = queue.shift(); o; o = queue.shift()) {
+        try {
+          const found = await this.readEntryFromStore(o.id, o.hasSidecar, (hints, entry) => {
+            for (const p of hints.people ?? []) people.set(p.id, p);
+            if (hints.categoryName && entry.category) categoryNames.set(entry.category, hints.categoryName);
+          }, o.size);
+          if (found) rebuilt.entries[o.id] = found;
+          else unreadable++;
+        } catch (e) {
+          if (e instanceof OfflineError) throw e;
+          unreadable++;
+        }
+        onProgress?.(++done, stored.length);
       }
-      onProgress?.(++done, stored.length);
-    }
+    };
+    await Promise.all(Array.from({ length: Math.min(REBUILD_CONCURRENCY, stored.length) }, worker));
 
     const iso = this.now().toISOString();
     const known = new Set(rebuilt.categories.map((c) => c.id));
@@ -553,6 +563,10 @@ export class VaultEngine {
     this.status.syncing = true;
     this.emit();
     try {
+      // 0. where the store can do it: new documents, their labels and the index in one atomic write
+      if (this.dirty.uploads.length > 0 && this.remote.stage && this.remote.commitStaged && !this.batchUnsupported) {
+        await this.pushBatch();
+      }
       // 1. content, before anything references it
       for (const id of [...this.dirty.uploads]) {
         const entry = this.index.entries[id];
@@ -610,6 +624,68 @@ export class VaultEngine {
         this.syncAgain = false;
         void this.sync();
       }
+    }
+  }
+
+  /**
+   * One commit for a whole upload (B-16). Leaves `dirty.uploads` untouched when
+   * it can't finish, and the one-by-one path below picks up from there: that
+   * path is idempotent, so a half-understood failure here is never fatal.
+   */
+  private async pushBatch(): Promise<void> {
+    const remote = this.remote;
+    const ids = this.dirty.uploads.filter((id) => this.index.entries[id]);
+    const staged: StagedItem[] = [];
+    for (const id of ids) {
+      const parts = await this.local.getObject(id);
+      const label = await this.local.getSidecar(id);
+      if (!parts || !label) return; // not everything is on this device: let the classic path sort it out
+      const items: Array<[StageItem, Bytes]> = [
+        ...parts.map((data, part): [StageItem, Bytes] => [{ kind: "part", id, part }, data]),
+        [{ kind: "label", id }, label],
+      ];
+      const tokens = await Promise.all(items.map(([item, data]) => remote.stage!(item, data)));
+      if (tokens.some((t) => t === null)) {
+        this.batchUnsupported = true;
+        return;
+      }
+      items.forEach(([item], i) => staged.push({ ...item, token: tokens[i]! }));
+    }
+    if (staged.length === 0) return;
+
+    for (let attempt = 0; attempt < MAX_CAS_ATTEMPTS; attempt++) {
+      const revision = this.revision;
+      const toWrite = pruneTombstones({ ...this.index, updatedAt: this.now().toISOString() }, this.now().getTime());
+      const sealed = await sealIndex(this.vmk, toWrite);
+      const token = await remote.stage!({ kind: "index" }, sealed);
+      if (token === null) return;
+      try {
+        const { indexVersion } = await remote.commitStaged!([...staged, { kind: "index", token }], { indexIfMatch: this.remoteVersion });
+        this.remoteVersion = indexVersion;
+        this.dirty.uploads = this.dirty.uploads.filter((id) => !ids.includes(id));
+        if (this.revision === revision) this.dirty.index = false;
+        else this.syncAgain = true;
+        await this.local.putBlob(BLOB.remoteIndex, sealed);
+        await this.local.putBlob(BLOB.remoteIndexVersion, utf8(indexVersion));
+        await this.persistDirty();
+        return;
+      } catch (e) {
+        if (!isPreconditionFailed(e)) throw e;
+      }
+      const theirs = await remote.getIndex();
+      // The index hadn't moved, so it was a create-only file that lost: part of this
+      // batch already exists (a retry after a reply that never arrived). Not ours to untangle here.
+      if ((theirs?.version ?? undefined) === this.remoteVersion) return;
+      if (theirs) {
+        try {
+          this.index = mergeIndexes(await openIndex(this.vmk, theirs.data), this.index);
+          this.revision++;
+        } catch {
+          throw new IndexUnreadableError();
+        }
+      }
+      this.remoteVersion = theirs?.version;
+      await sleep(Math.random() * 120 * (attempt + 1));
     }
   }
 
@@ -713,6 +789,7 @@ export class VaultEngine {
     id: string,
     hasSidecar: boolean,
     onHints?: (hints: Hints, entry: IndexEntry) => void,
+    storedSize?: number,
   ): Promise<IndexEntry | null> {
     if (hasSidecar) {
       const sc = await this.remote.getSidecar(id).catch((e) => { throw this.classify(e); });
@@ -730,8 +807,7 @@ export class VaultEngine {
     try {
       const part0 = await this.remote.getPart(id, 0);
       const { header, prefix } = await openHeader(this.vmk, part0);
-      const stored = (await this.remote.listObjects()).find((o) => o.id === id);
-      const entry = entryFromHeader(header, { encryptedSize: stored?.size ?? part0.length, partCount: prefix.partCount });
+      const entry = entryFromHeader(header, { encryptedSize: storedSize ?? part0.length, partCount: prefix.partCount });
       if (header.hints) onHints?.(header.hints, entry);
       return entry;
     } catch (e) {
