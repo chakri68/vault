@@ -1,0 +1,190 @@
+@import "tailwindcss";
+
+/* Almirah tokens — ui_theme.md is the source of truth. Components use the
+   semantic names only; dark mode swaps values here, so no `dark:` variants. */
+:root {
+  --canvas: #F1F2EE; --surface: #FFFFFF; --sunken: #E8EAE5; --sunken-pressed: #DDE0DA;
+  --pressed: #ECEEE9; --line: #E3E5E0; --control: #8C928D;
+  --ink: #161917; --ink-2: #484E4A; --ink-3: #646A66; --on-ink: #F7F8F5;
+  --accent: #1D6A50; --accent-soft: #E1EEE7; --accent-inverse: #8FD6B5;
+  --good: #1C7248; --good-soft: #E2F1E8;
+  --warn: #8A5300; --warn-soft: #FAEDD6;
+  --danger: #B0281F; --danger-soft: #FBE6E3; --on-danger: #FFFFFF;
+  --scrim: rgb(12 14 13 / .38); --viewer: #0D0F0E; --knob: #FFFFFF;
+  --shadow-float-value: 0 1px 2px rgb(16 20 18 / .06), 0 10px 30px rgb(16 20 18 / .12);
+
+  --cat-identity-bg: #E3EBF6;   --cat-identity-fg: #2B5891;
+  --cat-medical-bg: #F7E5E4;    --cat-medical-fg: #A23B3B;
+  --cat-finance-bg: #E2EFE6;    --cat-finance-fg: #2C6941;
+  --cat-education-bg: #EBE6F5;  --cat-education-fg: #5A4590;
+  --cat-employment-bg: #F6EADC; --cat-employment-fg: #8C5217;
+  --cat-insurance-bg: #DEEFEE;  --cat-insurance-fg: #206468;
+  --cat-travel-bg: #DFEDF4;     --cat-travel-fg: #236382;
+  --cat-property-bg: #F3EDDA;   --cat-property-fg: #75601C;
+  --cat-legal-bg: #E7E9ED;      --cat-legal-fg: #48505F;
+  --cat-photos-bg: #F5E5EE;     --cat-photos-fg: #923E6B;
+  --cat-other-bg: #EBECE8;      --cat-other-fg: #535954;
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --canvas: #111312; --surface: #1A1D1B; --sunken: #242826; --sunken-pressed: #2E3330;
+    --pressed: #232725; --line: #2A2E2B; --control: #666C68;
+    --ink: #EBEEEA; --ink-2: #B3B9B4; --ink-3: #8E948F; --on-ink: #111312;
+    --accent: #74C6A2; --accent-soft: #1C3A2F; --accent-inverse: #1D6A50;
+    --good: #72CB98; --good-soft: #1B3526;
+    --warn: #E6AE52; --warn-soft: #3A2C12;
+    --danger: #F28C82; --danger-soft: #3D1D1A; --on-danger: #111312;
+    --scrim: rgb(0 0 0 / .55); --knob: #EBEEEA;
+    --shadow-float-value: 0 1px 2px rgb(0 0 0 / .4), 0 10px 30px rgb(0 0 0 / .5);
+
+    --cat-identity-bg: #1E2A3A;   --cat-identity-fg: #9CBCE5;
+    --cat-medical-bg: #3A2020;    --cat-medical-fg: #EBA3A0;
+    --cat-finance-bg: #1C3124;    --cat-finance-fg: #94CFA6;
+    --cat-education-bg: #2A2440;  --cat-education-fg: #C0B1E6;
+    --cat-employment-bg: #3A2A1A; --cat-employment-fg: #E4B887;
+    --cat-insurance-bg: #1A3233;  --cat-insurance-fg: #8DCDD0;
+    --cat-travel-bg: #1A2E38;     --cat-travel-fg: #8CC3DE;
+    --cat-property-bg: #35301B;   --cat-property-fg: #D8C47E;
+    --cat-legal-bg: #262A31;      --cat-legal-fg: #B2BACA;
+    --cat-photos-bg: #3A2130;     --cat-photos-fg: #E6A3C6;
+    --cat-other-bg: #272A28;      --cat-other-fg: #B4BAB5;
+
+    color-scheme: dark;
+  }
+}
+
+@theme inline {
+  --color-canvas: var(--canvas);   --color-surface: var(--surface);
+  --color-sunken: var(--sunken);   --color-sunken-pressed: var(--sunken-pressed);
+  --color-pressed: var(--pressed); --color-line: var(--line); --color-control: var(--control);
+  --color-ink: var(--ink); --color-ink-2: var(--ink-2); --color-ink-3: var(--ink-3); --color-on-ink: var(--on-ink);
+  --color-accent: var(--accent); --color-accent-soft: var(--accent-soft); --color-accent-inverse: var(--accent-inverse);
+  --color-good: var(--good); --color-good-soft: var(--good-soft);
+  --color-warn: var(--warn); --color-warn-soft: var(--warn-soft);
+  --color-danger: var(--danger); --color-danger-soft: var(--danger-soft); --color-on-danger: var(--on-danger);
+  --color-scrim: var(--scrim); --color-viewer: var(--viewer); --color-knob: var(--knob);
+
+  --font-sans: var(--font-atkinson), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-atkinson-mono), ui-monospace, monospace;
+
+  --text-display: 2rem;      --text-display--line-height: 2.375rem;   --text-display--letter-spacing: -0.02em;  --text-display--font-weight: 700;
+  --text-title: 1.625rem;    --text-title--line-height: 2rem;         --text-title--letter-spacing: -0.015em;   --text-title--font-weight: 700;
+  --text-heading: 1.25rem;   --text-heading--line-height: 1.625rem;   --text-heading--letter-spacing: -0.01em;  --text-heading--font-weight: 600;
+  --text-body: 1.0625rem;    --text-body--line-height: 1.5rem;
+  --text-label: 1.0625rem;   --text-label--line-height: 1.375rem;     --text-label--font-weight: 500;
+  --text-callout: 0.9375rem; --text-callout--line-height: 1.25rem;
+  --text-footnote: 0.8125rem;--text-footnote--line-height: 1.125rem;  --text-footnote--letter-spacing: 0.01em;  --text-footnote--font-weight: 600;
+
+  --radius-sm: 0.5rem; --radius-md: 0.75rem; --radius-lg: 1rem; --radius-xl: 1.5rem;
+  --shadow-float: var(--shadow-float-value);
+  --ease-enter: cubic-bezier(.2, .8, .2, 1);
+  --ease-exit: cubic-bezier(.4, 0, 1, 1);
+}
+
+@layer base {
+  html { -webkit-tap-highlight-color: transparent; -webkit-text-size-adjust: 100%; }
+  body { @apply bg-canvas text-ink font-sans text-body antialiased; }
+  h1, h2, h3, h4 { text-wrap: balance; }
+  p { text-wrap: pretty; }
+  button { cursor: pointer; }
+  :where(button, a, [role="button"], [role="tab"], summary, label) {
+    touch-action: manipulation; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+  }
+  :focus:not(:focus-visible) { outline: none; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* reduced motion: everything becomes a short opacity fade. No scale, no slide. */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 120ms !important;
+      transition-duration: 120ms !important;
+      transition-property: opacity, background-color, color, border-color !important;
+    }
+  }
+}
+
+/* A subtree that is dark whatever the OS says. The document viewer uses it:
+   documents are photographed on white, and a dark surround frames them. */
+.theme-dark {
+  --canvas: #111312; --surface: #1A1D1B; --sunken: #242826; --sunken-pressed: #2E3330;
+  --pressed: #232725; --line: #2A2E2B; --control: #666C68;
+  --ink: #EBEEEA; --ink-2: #B3B9B4; --ink-3: #8E948F; --on-ink: #111312;
+  --accent: #74C6A2; --accent-soft: #1C3A2F; --accent-inverse: #1D6A50;
+  --good: #72CB98; --good-soft: #1B3526;
+  --warn: #E6AE52; --warn-soft: #3A2C12;
+  --danger: #F28C82; --danger-soft: #3D1D1A; --on-danger: #111312;
+  --knob: #EBEEEA;
+  color-scheme: dark;
+}
+
+/* category tint: set data-cat on a tile (or any ancestor) and read --cat-bg / --cat-fg */
+@layer components {
+  [data-cat]            { --cat-bg: var(--cat-other-bg);      --cat-fg: var(--cat-other-fg); }
+  [data-cat="identity"]   { --cat-bg: var(--cat-identity-bg);   --cat-fg: var(--cat-identity-fg); }
+  [data-cat="medical"]    { --cat-bg: var(--cat-medical-bg);    --cat-fg: var(--cat-medical-fg); }
+  [data-cat="finance"]    { --cat-bg: var(--cat-finance-bg);    --cat-fg: var(--cat-finance-fg); }
+  [data-cat="education"]  { --cat-bg: var(--cat-education-bg);  --cat-fg: var(--cat-education-fg); }
+  [data-cat="employment"] { --cat-bg: var(--cat-employment-bg); --cat-fg: var(--cat-employment-fg); }
+  [data-cat="insurance"]  { --cat-bg: var(--cat-insurance-bg);  --cat-fg: var(--cat-insurance-fg); }
+  [data-cat="travel"]     { --cat-bg: var(--cat-travel-bg);     --cat-fg: var(--cat-travel-fg); }
+  [data-cat="property"]   { --cat-bg: var(--cat-property-bg);   --cat-fg: var(--cat-property-fg); }
+  [data-cat="legal"]      { --cat-bg: var(--cat-legal-bg);      --cat-fg: var(--cat-legal-fg); }
+  [data-cat="photos"]     { --cat-bg: var(--cat-photos-bg);     --cat-fg: var(--cat-photos-fg); }
+}
+
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- ui primitives: keyframes ---- */
+/* Owned by src/components/ui. Motion table: menus/toasts 180 ms, sheets and
+   dialogs 240 ms in / 180 ms out, enter cubic-bezier(.2,.8,.2,1), exit
+   cubic-bezier(.4,0,1,1). Keyframes animate `transform` and leave the
+   `translate` property alone, so Tailwind's centring (-translate-x-1/2) survives. */
+
+@keyframes ui-fade-in    { from { opacity: 0; } }
+@keyframes ui-fade-out   { to   { opacity: 0; } }
+@keyframes ui-sheet-in   { from { transform: translateY(100%); } }
+@keyframes ui-sheet-out  { to   { transform: translateY(100%); } }
+@keyframes ui-dialog-in  { from { opacity: 0; transform: translateY(8px) scale(.97); } }
+@keyframes ui-dialog-out { to   { opacity: 0; transform: translateY(8px) scale(.97); } }
+@keyframes ui-toast-in   { from { opacity: 0; transform: translateY(16px); } }
+@keyframes ui-toast-out  { to   { opacity: 0; transform: translateY(16px); } }
+@keyframes ui-pulse      { 50%  { opacity: .5; } }
+@keyframes ui-shimmer    { from { transform: translateX(-110%); } to { transform: translateX(260%); } }
+
+/* reduced motion: same names, fades only. No scale, no slide. */
+@media (prefers-reduced-motion: reduce) {
+  @keyframes ui-sheet-in   { from { opacity: 0; } }
+  @keyframes ui-sheet-out  { to   { opacity: 0; } }
+  @keyframes ui-dialog-in  { from { opacity: 0; } }
+  @keyframes ui-dialog-out { to   { opacity: 0; } }
+  @keyframes ui-toast-in   { from { opacity: 0; } }
+  @keyframes ui-toast-out  { to   { opacity: 0; } }
+  @keyframes ui-shimmer    { 50%  { opacity: .4; } }
+}
+
+@utility anim-fade-in    { animation: ui-fade-in 240ms cubic-bezier(.2, .8, .2, 1) both; }
+@utility anim-fade-out   { animation: ui-fade-out 180ms cubic-bezier(.4, 0, 1, 1) both; }
+@utility anim-sheet-in   { animation: ui-sheet-in 240ms cubic-bezier(.2, .8, .2, 1) both; }
+@utility anim-sheet-out  { animation: ui-sheet-out 180ms cubic-bezier(.4, 0, 1, 1) both; }
+@utility anim-dialog-in  { animation: ui-dialog-in 240ms cubic-bezier(.2, .8, .2, 1) both; }
+@utility anim-dialog-out { animation: ui-dialog-out 180ms cubic-bezier(.4, 0, 1, 1) both; }
+@utility anim-toast-in   { animation: ui-toast-in 180ms cubic-bezier(.2, .8, .2, 1) both; }
+@utility anim-toast-out  { animation: ui-toast-out 180ms cubic-bezier(.4, 0, 1, 1) both; }
+@utility anim-pulse      { animation: ui-pulse 1.8s ease-in-out infinite; }
+@utility anim-shimmer    { animation: ui-shimmer 1.6s ease-in-out infinite; }
+
+/* The reduced-motion rule in @layer base clamps every animation to 120 ms, which
+   turns a looping indicator into a strobe. Same layer, higher specificity: loops
+   keep a slow cadence instead. (.ui-loop = skeleton + shimmer, .ui-spin = spinner) */
+@layer base {
+  @media (prefers-reduced-motion: reduce) {
+    .ui-loop { animation-duration: 2s !important; }
+    .ui-spin { animation-duration: 1.4s !important; }
+  }
+}
+/* ---- end ui primitives ---- */
