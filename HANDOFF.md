@@ -8,7 +8,7 @@ The vault works end to end, against `local-fs` and against a real private GitHub
 
 `main` is clean and builds. 96 unit/integration tests, plus 13 that run over HTTP against a live server.
 
-**The GitHub repo currently holds a throwaway test vault** (15 junk documents). A store can only be set up once, so before the family's real setup: delete and recreate the repo (or empty it), then run setup again. The test vault's password and recovery code were given in chat, not written here.
+The store repo (`chakri68/vault-storage`) has been emptied by the owner and is ready for the family's real setup, which should happen **on the production domain, `vault.chakri.me`**, not on localhost: passkeys enrolled during setup bind to the origin they were made on. The test vault's ciphertext is still in that repo's git history, which is harmless (it's ciphertext, and its keys are gone).
 
 ## Run it
 
@@ -134,7 +134,7 @@ Same env vars work. What matters:
 - **Every API route sets `maxDuration = 60`.** A GitHub-backed write is several API calls in a row (setup is three commits). Don't rely on a platform default.
 - **Leave the function region in the US** (Vercel's default). GitHub's API is there; each request makes 1–6 GitHub calls, so one India↔US hop plus fast GitHub calls beats Mumbai functions making slow ones.
 - **Set env vars for Production only.** Preview deployments would otherwise share the family's real store. Vercel's preview toolbar is also a third-party script, which the CSP blocks (console noise on previews, nothing else).
-- **Pick the domain first.** With `WEBAUTHN_RP_ID`/`WEBAUTHN_ORIGIN` unset, the passkey domain is whatever host serves the request. Enrol on `something.vercel.app`, move to a custom domain later, and every passkey dies. Set both to the permanent domain.
+- **The domain is `vault.chakri.me`.** In Vercel set `WEBAUTHN_RP_ID=vault.chakri.me` and `WEBAUTHN_ORIGIN=https://vault.chakri.me`. Unset, the passkey domain is whatever host serves the request, so a visit via the `*.vercel.app` alias would enrol passkeys that die on the real domain. Don't put these two in the local `.env`: localhost would then fail every passkey ceremony on an origin mismatch. (`chakri.me` as the RP ID would let passkeys survive a move to another subdomain, but would also let every other `*.chakri.me` site ask for them. For a vault, the narrow one.)
 - **Set `SETUP_TOKEN`.** Between emptying the store and running setup, anyone who finds the URL could claim it.
 - Keep Vercel Analytics and Speed Insights off: spec says zero analytics, and the CSP would block them anyway.
 - The fine-grained GitHub token expires (a year at most). When it does, the vault keeps opening offline but nothing saves; the app says storage is unavailable. Put the renewal in a calendar.
@@ -144,6 +144,7 @@ Same env vars work. What matters:
 ## Things that will bite you
 
 - **The build runs twice** (`scripts/build.mjs`): pass one discovers each page's inline scripts, pass two pins their hashes into a per-route CSP, and it fails if the passes differ. Any page that becomes dynamic loses its hashes and will render blank in production. Keep pages static. `generateBuildId` is fixed for the same reason.
+- **"Empty repo" is two different states.** No commits at all: the Git Data API refuses everything and the adapter bootstraps through the contents API. One commit pointing at git's empty tree (`4b825dc6…`; what you get after deleting every file, or `--allow-empty`): GitHub 404s that tree and won't accept it as `base_tree`. The adapter treats it as "no files" and builds a whole tree. The second one would have failed the family's first write; it's in the fake and tested now.
 - **Don't bundle the PDF.js worker.** Production tree-shaking removed its start-up side effect and it sat there alive and silent. It's served as the stock file from `/pdfjs/` (copied by `scripts/copy-pdfjs.mjs`).
 - **Anything cached on `globalThis` survives a dev reload** (the store provider, the registry, `vault.json`). The provider is rebuilt when its class changes, because a stale instance once answered 501 for a method that had just been added. If a server change "isn't taking", restart `next dev`.
 - Server-side caches: `registry.json` 60 s, `vault.json` 30 s. Every write path reads fresh. The TTL is how long *another* instance takes to notice a removed device.

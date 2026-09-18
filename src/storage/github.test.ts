@@ -29,6 +29,37 @@ describe("GitHub adapter, against an in-memory Git Data API", () => {
     expect(gh.messages[0]).toBe("vault: initialise store");
   });
 
+  it("works on a repository whose only commit is an empty one (files deleted, or --allow-empty)", async () => {
+    const gh = new FakeGitHub();
+    gh.seedEmptyCommit();
+    const provider = new GitHubStorageProvider(cfg, gh.fetch);
+    await provider.connect();
+    expect(await provider.list()).toEqual([]);
+    expect(isNotFound(await caught(provider.get("vault.json")))).toBe(true);
+
+    const data = randomBytes(300);
+    await provider.put("vault.json", data, { ifNoneMatch: "*" });
+    expect(equalBytes((await provider.get("vault.json")).data, data)).toBe(true);
+    expect(gh.messages).toEqual(["Initial empty commit", "vault: update config"]); // built on their commit, nothing forced
+    expect(gh.forcePushes).toBe(0);
+
+    // and the whole engine, batch commit included, from that starting point
+    const gh2 = new FakeGitHub();
+    gh2.seedEmptyCommit();
+    const vmk = await importAesKey(generateVmk());
+    const engine = new VaultEngine({ remote: new ProviderRemote(new GitHubStorageProvider(cfg, gh2.fetch)), local: new MemoryLocalStore(), vmk });
+    await engine.open();
+    const { ids, synced } = await engine.addDocuments([{ content: randomBytes(900), extension: "pdf", mimeType: "application/pdf", meta: { name: "First document", ownerProfileIds: [], tags: [] } }]);
+    expect(synced).toBe(true);
+    expect([...gh2.files().keys()]).toContain(objectPath(ids[0]));
+
+    // deleting the last file takes the repository back to an empty tree; it has to keep working after that too
+    await engine.deletePermanently(ids[0]);
+    await engine.sync();
+    const again = await engine.addDocuments([{ content: randomBytes(900), extension: "pdf", mimeType: "application/pdf", meta: { name: "Second", ownerProfileIds: [], tags: [] } }]);
+    expect(again.synced).toBe(true);
+  });
+
   it("compare-and-swap: a stale version loses, create-only refuses to overwrite", async () => {
     const { provider } = make();
     const v1 = (await provider.put("index.vault", randomBytes(100), { ifNoneMatch: "*" })).version;

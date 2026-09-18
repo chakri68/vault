@@ -12,6 +12,9 @@ import { createHash } from "node:crypto";
  */
 interface Commit { tree: string; parents: string[]; message: string }
 
+/** git's empty tree. Every repository "has" it and GitHub's API serves none of them: asking for it is a 404. */
+export const EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
+
 export class FakeGitHub {
   blobs = new Map<string, Buffer>();
   trees = new Map<string, Map<string, string>>(); // tree sha -> path -> blob sha
@@ -39,7 +42,18 @@ export class FakeGitHub {
   }
 
   files(): Map<string, string> {
-    return this.head ? this.trees.get(this.commits.get(this.head)!.tree)! : new Map();
+    return (this.head && this.trees.get(this.commits.get(this.head)!.tree)) || new Map();
+  }
+
+  /**
+   * The state a repository is in after its files are deleted, or after
+   * `git commit --allow-empty` on a new one: a branch, a commit, and no files.
+   * Not the same as a repository with no commits at all.
+   */
+  seedEmptyCommit(message = "Initial empty commit"): void {
+    const sha = this.sha("commit", `${EMPTY_TREE}:${message}`);
+    this.commits.set(sha, { tree: EMPTY_TREE, parents: [], message });
+    this.head = sha;
   }
 
   /** what another writer does: commit straight to the branch */
@@ -87,7 +101,7 @@ export class FakeGitHub {
       }
       const ref = url.searchParams.get("ref") ?? "";
       const commit = this.commits.get(ref) ?? (this.head ? this.commits.get(this.head) : undefined);
-      const blob = commit ? this.trees.get(commit.tree)!.get(file) : undefined;
+      const blob = commit ? this.trees.get(commit.tree)?.get(file) : undefined;
       if (!blob) return this.json(404, { message: "Not Found" });
       const data = this.blobs.get(blob)!;
       const big = data.length > 1_000_000;
@@ -120,8 +134,9 @@ export class FakeGitHub {
       return c ? this.json(200, { tree: { sha: c.tree } }) : this.json(404, {});
     }
     if (path === "/git/trees" && method === "POST") {
-      const base = this.trees.get(body.base_tree);
-      if (!base) return this.json(404, {});
+      // no base_tree means "this is the whole tree"; the empty tree is not an object you can build on
+      const base = body.base_tree === undefined ? new Map<string, string>() : this.trees.get(body.base_tree);
+      if (!base) return this.json(404, { message: "Not Found" });
       const tree = new Map(base);
       for (const e of body.tree as Array<{ path: string; sha: string | null }>) {
         if (e.sha === null) {
@@ -151,7 +166,11 @@ export class FakeGitHub {
       return this.json(200, { object: { sha: this.head } });
     }
     if (path.startsWith("/git/trees/") && method === "GET") {
-      const tree = this.trees.get(path.slice("/git/trees/".length)) ?? this.files();
+      const wanted = path.slice("/git/trees/".length);
+      const named = this.trees.get(wanted);
+      // a branch name resolves to its head's tree, and an empty tree is a 404 either way
+      const tree = named ?? (this.commits.has(wanted) || wanted.length === 40 ? undefined : this.trees.get(this.commits.get(this.head!)!.tree));
+      if (!tree) return this.json(404, { message: "Not Found" });
       return this.json(200, { tree: [...tree].map(([p, sha]) => ({ path: p, type: "blob", sha, size: this.blobs.get(sha)!.length })), truncated: false });
     }
     return this.json(404, { message: `fake: unhandled ${method} ${path}` });

@@ -25,6 +25,12 @@ interface Precondition {
 }
 
 const API = "https://api.github.com";
+/**
+ * git's empty tree. A repository whose files were all deleted (or that started
+ * with `--allow-empty`) has a real commit pointing at it, but GitHub's API won't
+ * serve it or build on it: both are a 404. It means "no files", not "no store".
+ */
+const EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 const MAX_ATTEMPTS = 6;
 
 /**
@@ -249,11 +255,17 @@ export class GitHubStorageProvider implements StorageProvider {
 
       // Every path at that head, in one call: answers all the preconditions and
       // says which deletions are real (deleting what isn't there fails the tree call).
-      const listing = await this.json<{ tree?: Array<{ path: string; type: string; sha: string }> }>(
-        "GET", `/git/trees/${head.data.commit.tree.sha}?recursive=1`,
-      );
-      if (listing.status !== 200 || !listing.data?.tree) throw new StorageUnavailableError();
-      const current = new Map(listing.data.tree.filter((e) => e.type === "blob").map((e) => [e.path, e.sha]));
+      const treeSha = head.data.commit.tree.sha;
+      let current = new Map<string, string>();
+      let emptyTree = treeSha === EMPTY_TREE;
+      if (!emptyTree) {
+        const listing = await this.json<{ tree?: Array<{ path: string; type: string; sha: string }> }>(
+          "GET", `/git/trees/${treeSha}?recursive=1`,
+        );
+        if (listing.status === 404) emptyTree = true; // a head whose tree can't be fetched has nothing in it
+        else if (listing.status !== 200 || !listing.data?.tree) throw new StorageUnavailableError();
+        else current = new Map(listing.data.tree.filter((e) => e.type === "blob").map((e) => [e.path, e.sha]));
+      }
 
       for (const p of preconditions) {
         const sha = current.get(p.path);
@@ -264,7 +276,8 @@ export class GitHubStorageProvider implements StorageProvider {
       if (live.length === 0) return blobs;
 
       const tree = await this.json<{ sha: string }>("POST", "/git/trees", {
-        base_tree: head.data.commit.tree.sha,
+        // nothing to build on when the head has no files: this is then the whole tree
+        ...(emptyTree ? {} : { base_tree: treeSha }),
         tree: live.map((c) => ({ path: c.path, mode: "100644", type: "blob", sha: c.data ? blobs.get(c.path) : null })),
       });
       if (tree.status !== 201) throw new StorageUnavailableError();
