@@ -352,6 +352,40 @@ describe("offline (§17)", () => {
     expect(equalBytes((await offline.fetchDocument(ids[0])).content, content)).toBe(true);
   });
 
+  it("a device that has the list shows it without waiting for the store, and still hears what changed", async () => {
+    const { provider, device, vmk } = await setup();
+    const a = await device();
+    const { ids } = await a.engine.addDocuments([doc("Passport — Mom")]);
+    await settled(a.engine);
+
+    // the store hangs: never answers, never errors
+    const hung = new ProviderRemote(provider);
+    (hung as unknown as Record<string, unknown>).getIndex = () => new Promise(() => {});
+    const slow = new VaultEngine({ remote: hung, local: a.local, vmk });
+    const opened = await Promise.race([slow.open().then(() => "opened"), new Promise((r) => setTimeout(() => r("still waiting"), 500))]);
+    expect(opened).toBe("opened");
+    expect(slow.index.entries[ids[0]].name).toBe("Passport — Mom");
+    slow.close();
+
+    // and with a store that does answer, someone else's edit lands shortly after opening
+    const other = (await device()).engine;
+    await other.updateMeta(ids[0], { name: "Passport — Amma" });
+    await settled(other);
+    const again = new VaultEngine({ remote: new ProviderRemote(provider), local: a.local, vmk });
+    await again.open();
+    for (let i = 0; i < 100 && again.index.entries[ids[0]].name !== "Passport — Amma"; i++) await new Promise((r) => setTimeout(r, 10));
+    expect(again.index.entries[ids[0]].name).toBe("Passport — Amma");
+  });
+
+  it("a device that has never seen the vault does wait: it has nothing else to show", async () => {
+    const { device } = await setup();
+    const a = await device();
+    await a.engine.addDocuments([doc("Only on the store")]);
+    await settled(a.engine);
+    const fresh = (await device()).engine; // open() has resolved by here
+    expect(Object.values(fresh.index.entries).map((e) => e.name)).toEqual(["Only on the store"]);
+  });
+
   it("queues edits and uploads made offline, and replays them through the merge on reconnect", async () => {
     const { provider, device, vmk } = await setup();
     const a = await device();

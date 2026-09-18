@@ -4,9 +4,11 @@ State as of 19 Sep 2026. Read this, then `spec.md` (behaviour) and `ui_theme.md`
 
 ## Where it stands
 
-The vault works end to end against the `local-fs` store: setup, unlock, add, view, search, edit, trash, offline, backup, restore. It has never touched a real GitHub repo and no passkey has ever been enrolled. Those are the two real unknowns; everything else below is either tested or labelled.
+The vault works end to end, against `local-fs` and against a real private GitHub repo: setup, unlock, add, view, search, edit, trash, offline, backup, restore, Repair. No passkey has ever been enrolled (no authenticator on the dev machine). That's the one real unknown left; everything else below is either tested or labelled.
 
-`main` is clean and builds. 93 unit/integration tests, plus 12 that run over HTTP against a live server.
+`main` is clean and builds. 96 unit/integration tests, plus 13 that run over HTTP against a live server.
+
+**The GitHub repo currently holds a throwaway test vault** (15 junk documents). A store can only be set up once, so before the family's real setup: delete and recreate the repo (or empty it), then run setup again. The test vault's password and recovery code were given in chat, not written here.
 
 ## Run it
 
@@ -74,7 +76,8 @@ Deviations not in Appendix B: object ids travel in a signed `x-fv-object` header
 | Merge | property tests: commutative, associative, idempotent, nothing lost except to a tombstone |
 | Engine: CAS conflicts, orphans, rebuild with index deleted, trash/purge, offline queue replay | integration tests, memory provider |
 | Backup mirror + verify, disaster recovery | tests, and once for real in Chrome: `.fvault` → empty deployment → recovery code only → store byte-identical |
-| GitHub adapter | tests against `src/storage/fake-github.ts` (**my model of GitHub, not GitHub**) |
+| GitHub adapter | tests against `src/storage/fake-github.ts`, **and** a real private repo: empty-repo bootstrap, setup, the round-trip self test, uploads, edits, a second device, wrong password, Repair |
+| Nothing readable in the real store | pulled all 34 blobs and the commit log via `gh`: no names, numbers, tags or MIME types anywhere; filenames are `objects/<uuid>.vault`; commit messages are five generic strings |
 | API auth, CSRF, write-auth, CAS, delete precondition, rate limiting | 12 tests over real HTTP; no object ids in request logs |
 | Setup, lock, add (EXIF stripped from the *stored* bytes), document, viewer (image + PDF), search, trash, people, categories, settings | walked in Chrome at phone width |
 | Offline | production build, network off, hard reload, unlock, open a PDF |
@@ -84,32 +87,51 @@ Deviations not in Appendix B: object ids travel in a signed `x-fv-object` header
 
 ## Not verified
 
-- **Real GitHub.** `.env` has `GITHUB_PAT` but no `GITHUB_OWNER` / `GITHUB_REPOSITORY`. Loading the PAT into a shell was blocked by the agent's permission classifier and I didn't route around it. Likeliest surprises: read-after-write lag on the contents API (safe: a stale read just fails the next CAS), error codes on an empty repo, rate limits during Repair (~2 calls per document).
+- **GitHub at scale and under contention.** Verified with 15 documents and one writer at a time. Not yet seen for real: two devices racing (covered against the fake only), a vault of hundreds, GitHub's secondary rate limits during a big Repair or backup, and any of it from a serverless host rather than one long-lived Node process.
 - **Every passkey path.** No platform authenticator on the dev machine. Enrol, unlock, PRF-at-create vs PRF-needs-second-prompt, offline passkey unlock, `resumeSession` are all untested. Needs a real Android phone and an iPhone. The no-PRF fallback notice *is* verified.
 - **Automatic backups and the folder backup UI.** The native folder picker can't be automated. The mirror logic underneath is tested.
 - **Share target** (Android share sheet → service worker → `/add`). Needs an installed PWA on Android.
 - Camera capture row, Web Share, pinch zoom, `prefers-reduced-motion` in a browser, tablet width, iOS anything.
 
-## Not built
+## What GitHub actually costs
 
-1. **One commit per upload on GitHub (B-16).** Today an upload is part(s) → index → sidecar, each its own commit, ~6 API calls apiece. `GitHubStorageProvider.commit(changes, preconditions)` already does multi-file commits internally (used by `deleteMany`). Sketch: stage blobs (`POST /git/blobs` needs no commit) via `PUT /api/objects/part` with a stage flag returning the blob sha, then `POST /api/vault/commit { files: [{path, token}], index, ifMatch }`. Keep the object-first path for providers without staging. The fake GitHub makes this testable.
-2. **Cloud backup mirror** (Drive etc.), server-side, per B-17.
-3. **Key rotation**, QR enrolment, PDF compression, thumbnails, multiple vaults (spec P2).
+About **one second per API call** from India, and that number drives everything. Measured on the real repo:
+
+| | before | now |
+|---|---|---|
+| upload 1 document | 15.3 s | 7.6 s |
+| upload 8 documents | ~80 s (extrapolated) | 12.3 s |
+| Repair, 15 documents | 17.5 s | 9.1 s |
+| unlock, device already has the list | 2.2 s | 0.3–0.5 s |
+| open one document (not yet on the device) | | 1.4 s |
+
+Unlock doesn't wait on the store any more: a device with a cached index opens from it at once and merges the fresh one in behind the scenes (`refreshInBackground`). Only a device that has never seen the vault waits. Document ciphertext was always fetched in the background, now three at a time.
+
+What got the rest there: blobs staged in parallel (`PUT /api/vault/stage`, no commit needed) then **one atomic commit** for parts + labels + index (`POST /api/vault/commit`, B-16); 5 sequential calls per commit instead of ~7; `registry.json` and `vault.json` cached server-side (they were a GitHub read on nearly every request); Repair reads labels eight at a time. An edit is still two commits (index, then label) at ~5 s each, but the UI doesn't wait on it.
+
+Stores that can't stage answer 501 and the engine falls back to the one-by-one path, which is idempotent. `local-fs` takes that path.
+
+## Not built, and why
+
+1. **Key rotation (spec P2).** Deliberately not rushed. It rewrites every label under a new key, replaces `vault.json` and the server's write-auth key, needs the family password *and* a fresh recovery code (neither old envelope can be re-wrapped without its secret), drops every passkey envelope, and has to be resumable: a rotation that dies halfway with some labels under each key is exactly the "can't get a document back" failure this product exists to prevent. It also has to get past the TOFU key-fingerprint check on other devices legitimately (sketch: derive a signing keypair from the vault key, store the public half as the fingerprint, and have the old key sign the new one). The content objects embed a wrap under the old key, so `fetchDocument` needs a fallback to the label's wrap. Worth a design review before code.
+2. **Cloud backup mirror** (Drive etc., B-17). Needs an OAuth client the owner registers; nothing to build against until then.
+3. QR enrolment, PDF compression, encrypted thumbnails, multiple vaults (spec P2).
 4. **Rate limits are in-memory.** Real on one Node process; per-instance on serverless. Swap the map in `src/server/rate-limit.ts` for a KV.
-5. **Recovery drill** (§20.4, the 180-day "can you still find the code?" prompt).
-6. Removing a device doesn't rotate the vault key (rotation is P2), and the copy says so rather than pretending.
+5. Removing a device doesn't rotate the vault key, and the copy says so rather than pretending.
 
 ## Do these next, in this order
 
-1. Add `GITHUB_OWNER`, `GITHUB_REPOSITORY` (private, empty repo) and a 32+ char `SESSION_SECRET` to `.env`. Run setup. Then clone the store repo and grep it and `git log` for anything readable (§40.2).
+1. Empty the store repo (it holds a test vault) and run the family's real setup. Write the recovery code down for real this time.
 2. Deploy somewhere with HTTPS on the domain you intend to keep forever (passkeys are origin-bound), and do the passkey pass on real phones.
 3. Get the owner's yes/no on the Appendix B decisions above, B-9 especially: it decides what parents can and can't do.
-4. Then B-16, because on real GitHub latency an upload will feel slow.
+4. Decide whether key rotation is wanted at all before designing it.
 
 ## Things that will bite you
 
 - **The build runs twice** (`scripts/build.mjs`): pass one discovers each page's inline scripts, pass two pins their hashes into a per-route CSP, and it fails if the passes differ. Any page that becomes dynamic loses its hashes and will render blank in production. Keep pages static. `generateBuildId` is fixed for the same reason.
 - **Don't bundle the PDF.js worker.** Production tree-shaking removed its start-up side effect and it sat there alive and silent. It's served as the stock file from `/pdfjs/` (copied by `scripts/copy-pdfjs.mjs`).
+- **Anything cached on `globalThis` survives a dev reload** (the store provider, the registry, `vault.json`). The provider is rebuilt when its class changes, because a stale instance once answered 501 for a method that had just been added. If a server change "isn't taking", restart `next dev`.
+- Server-side caches: `registry.json` 60 s, `vault.json` 30 s. Every write path reads fresh. The TTL is how long *another* instance takes to notice a removed device.
 - **Match storage errors by name** (`isNotFound`, `isPreconditionFailed`), never `instanceof`. The provider is cached on `globalThis` and outlives the module that made it; `instanceof` turned a 404 into a 500 and wedged sync.
 - **`sync()` snapshots must never be written back over `engine.index`.** That was a real lost-update bug; the `revision` counter is the guard.
 - The service worker installs from `public/precache.json`, written between build passes. A lazily loaded chunk that isn't in it won't exist offline.

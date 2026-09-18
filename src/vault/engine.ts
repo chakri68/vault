@@ -18,6 +18,7 @@ import type { StageItem, StagedItem, VaultRemote } from "./remote";
 const DAY = 86_400_000;
 const MAX_CAS_ATTEMPTS = 5;
 const REBUILD_CONCURRENCY = 8;
+const CACHE_CONCURRENCY = 3;
 
 export class IndexUnreadableError extends Error {
   constructor() {
@@ -159,17 +160,37 @@ export class VaultEngine {
     }
     this.emit();
 
+    // A device that already has the list shows it now. What changed elsewhere
+    // arrives a moment later and is merged in; nobody waits on the network to
+    // see documents they already have. Only a device that has never seen this
+    // vault has to wait, because it has nothing to show.
+    if (loaded) {
+      void this.refreshInBackground();
+      return;
+    }
     try {
       await this.refresh();
     } catch (e) {
       if (e instanceof IndexUnreadableError) {
         this.setProblem("needs-repair");
-        if (!loaded) throw e;
-        return;
+        throw e;
       }
-      if (!loaded && !(e instanceof OfflineError)) throw e;
+      if (!(e instanceof OfflineError)) throw e;
     }
     if (this.hasPending()) void this.sync();
+  }
+
+  private async refreshInBackground(): Promise<void> {
+    try {
+      await this.refresh();
+    } catch (e) {
+      if (this.closed) return;
+      // the cached list still works; Repair is offered rather than forced
+      if (e instanceof IndexUnreadableError) this.setProblem("needs-repair");
+      else if (e instanceof OfflineError) this.setProblem("offline");
+      this.emit();
+    }
+    if (!this.closed && this.hasPending()) void this.sync();
   }
 
   close(): void {
@@ -531,11 +552,17 @@ export class VaultEngine {
     const have = await this.local.objectIds();
     const wanted = Object.values(this.index.entries).filter((e) => !have.has(e.id));
     let done = 0;
-    for (const e of wanted) {
-      if (this.closed || shouldStop?.()) return;
-      await this.fetchDocument(e.id, { keep: true }).catch(() => {});
-      onProgress?.(++done, wanted.length);
-    }
+    // A few at a time: each is a round trip to the store, and strictly one by one
+    // a few hundred documents would take minutes. Never enough to get in the way
+    // of whatever the person is actually doing.
+    const worker = async () => {
+      for (let e = wanted.shift(); e; e = wanted.shift()) {
+        if (this.closed || shouldStop?.()) return;
+        await this.fetchDocument(e.id, { keep: true }).catch(() => {});
+        onProgress?.(++done, done + wanted.length);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(CACHE_CONCURRENCY, wanted.length) }, worker));
   }
 
   async evict(id: string): Promise<void> {

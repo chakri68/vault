@@ -402,7 +402,8 @@ export class VaultSession {
       remote: this.api, local: this.local, vmk: this.vmk,
       isAdmin: () => this.api.role === "admin",
       onChange: (index, sync) => {
-        this.set({ index, sync });
+        // an index that turns out to be unreadable once the background refresh lands
+        this.set(sync.problem === "needs-repair" ? { index, sync, needsRepair: true } : { index, sync });
         if (sync.problem === "signed-out") void this.recoverSession();
       },
     });
