@@ -16,6 +16,28 @@ export function ServiceWorkerRegistration() {
 }
 
 /**
+ * "Get the latest version": drops the service worker and everything it cached,
+ * then reloads, so every page, script and worker comes fresh from the server and
+ * the next service worker caches that for offline. Only the app itself: documents
+ * are in IndexedDB (§17), and so are edits still waiting to save.
+ *
+ * Asks the server first. Emptying the cache with no network would leave nothing
+ * to start the app from. false: unreachable, nothing touched.
+ */
+export async function reloadApp(): Promise<boolean> {
+  try {
+    if (!(await fetch("/sw.js", { cache: "no-store" })).ok) return false;
+  } catch {
+    return false;
+  }
+  const registrations = (await navigator.serviceWorker?.getRegistrations()) ?? [];
+  await Promise.all(registrations.map((r) => r.unregister()));
+  if ("caches" in window) for (const name of await caches.keys()) await caches.delete(name);
+  location.reload();
+  return true;
+}
+
+/**
  * The pieces that load on demand — the PDF engine, the image worker — are
  * fetched once, in the background, soon after the first unlock. From then on
  * the service worker can serve them with no network.

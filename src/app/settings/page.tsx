@@ -1,10 +1,11 @@
 "use client";
 
-import { FileText, HardDrive, KeyRound, Lock, ShieldCheck, Smartphone, Timer, Trash2, Users, Wrench } from "lucide-react";
+import { FileText, HardDrive, KeyRound, Lock, RefreshCw, ShieldCheck, Smartphone, Timer, Trash2, Users, Wrench } from "lucide-react";
 import { useState } from "react";
 import { useVault } from "@/client/vault-provider";
+import { reloadApp } from "@/components/pwa/service-worker";
 import { BackupPill } from "@/components/settings/backup-pill";
-import { Button, Group, GroupLabel, Row, Screen, ScreenHeader, Section, SegmentedControl, Sheet } from "@/components/ui";
+import { Button, Group, GroupLabel, Row, Screen, ScreenHeader, Section, SegmentedControl, Sheet, useToast } from "@/components/ui";
 import { activeProfiles, getSetting, trashed } from "@/lib/documents";
 import { formatBytes, plural } from "@/lib/format";
 
@@ -23,8 +24,20 @@ function newest<T extends { at: string }>(a?: T, b?: T): T | undefined {
 }
 
 export default function SettingsPage() {
-  const { state, rpc, lock } = useVault();
+  const { state, rpc, lock, online } = useVault();
+  const { toast } = useToast();
   const [lockSheet, setLockSheet] = useState(false);
+  const [reloadSheet, setReloadSheet] = useState(false);
+  const [reloading, setReloading] = useState(false);
+
+  const reload = async () => {
+    setReloading(true);
+    if (await reloadApp()) return; // the page is going away
+    setReloading(false);
+    setReloadSheet(false);
+    toast({ message: "Couldn't reach the server, so nothing changed. Try again when you're online." });
+  };
+
   const index = state.index;
   const prefs = state.prefs;
   const retention = index ? getSetting<number | null>(index, "trashRetentionDays", 30) : 30;
@@ -83,6 +96,13 @@ export default function SettingsPage() {
           <Row icon={ShieldCheck} label="Password and sign-in" href="/settings/security" />
           <Row icon={Wrench} label="Repair vault" description="Rebuild the list of documents from the files themselves" href="/settings/repair" />
           <Row icon={FileText} label="Technical details" href="/settings/technical" />
+          <Row
+            icon={RefreshCw}
+            label="Get the latest version"
+            description={online ? "Fetch the app fresh, without touching documents" : "Needs internet"}
+            onClick={() => setReloadSheet(true)}
+            disabled={!online}
+          />
         </Group>
       </Section>
 
@@ -100,6 +120,14 @@ export default function SettingsPage() {
             />
           ))}
         </Group>
+      </Sheet>
+
+      <Sheet open={reloadSheet} onOpenChange={(o) => !reloading && setReloadSheet(o)} title="Get the latest version">
+        <p className="px-1 text-body text-ink-2">
+          Family Vault starts again with a fresh copy from the server, and locks: you&rsquo;ll unlock once it&rsquo;s back.
+          Documents on this device stay where they are, and nothing waiting to save is lost.
+        </p>
+        <Button size="lg" icon={RefreshCw} loading={reloading} loadingLabel="Reloading…" onClick={() => void reload()}>Reload now</Button>
       </Sheet>
     </Screen>
   );
