@@ -10,7 +10,7 @@ import { NewPasswordPrompt } from "@/components/auth/new-password-prompt";
 import { SetupFlow } from "@/components/auth/setup-flow";
 import { useSetupInProgress } from "@/components/auth/setup-state";
 import { StorageProblem } from "@/components/auth/storage-problem";
-import { LaunchIntent, OfflineWarmUp, ServiceWorkerRegistration } from "@/components/pwa/service-worker";
+import { LaunchIntent, OfflineWarmUp, ServiceWorkerRegistration, SharedFilesPickup } from "@/components/pwa/service-worker";
 import { AutoBackup } from "@/components/settings/auto-backup";
 import { AppMark, BottomBar, Button, Icon, ToastProvider, cn } from "@/components/ui";
 import { AddSheet } from "@/components/upload/add-sheet";
@@ -164,6 +164,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <VaultProvider>
       <ToastProvider>
         <ServiceWorkerRegistration />
+        <SharedFilesPickup />
         <Gate>{children}</Gate>
       </ToastProvider>
     </VaultProvider>

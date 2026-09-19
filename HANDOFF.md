@@ -161,7 +161,7 @@ Same env vars work. What matters:
 ## Invariants. Break one and it's a security bug
 
 - Nothing the server receives can decrypt anything. No key in env, ever.
-- Plaintext never rests anywhere: not IndexedDB, not Cache Storage, not the service worker (shared files wait in its memory only).
+- Plaintext never rests anywhere: not IndexedDB, not Cache Storage, not the service worker (shared files wait in its memory, then the page's, only).
 - No filename, person, category or object id in a URL, a log line, or a commit message.
 - Every preview URL goes through `createPreviewUrl`, so lock can revoke it without trusting component cleanup.
 - The lock screen shows nothing: no counts, no names. The document title is always "Family Vault".

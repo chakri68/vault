@@ -27,9 +27,9 @@ const STATIC = "fv-static";            // content-hashed files: safe across buil
 const ROUTES = ${JSON.stringify(ROUTES)};
 
 // Files shared into the app from the OS share sheet wait here, in memory, until
-// the page asks for them. Never in Cache Storage or IndexedDB: that would be
-// plaintext at rest (§17.5). If the worker is stopped first they're gone, and
-// the page says "share it again".
+// the page asks for them, which it does as soon as it loads, before unlock: an
+// idle worker is stopped within about 30 seconds, and this memory goes with it.
+// Never in Cache Storage or IndexedDB: that would be plaintext at rest (§17.5).
 let shared = [];
 
 self.addEventListener("install", (event) => {
