@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { useVault } from "@/client/vault-provider";
 import { useShell } from "@/components/app-shell";
-import { setPendingFiles } from "@/components/upload/pending-files";
+import { noteEmptyShare, setPendingFiles } from "@/components/upload/pending-files";
 
 /** Registers the shell cache. Production only: in development it would serve stale code. */
 export function ServiceWorkerRegistration() {
@@ -109,12 +109,15 @@ export function LaunchIntent() {
       return;
     }
     if (!params.has("shared")) return;
+    // how many files the worker was given. "0": the browser dropped them before the app saw anything
+    const arrivedEmpty = params.get("shared") === "0";
     router.replace("/");
     let alive = true;
     void collectSharedFiles().then((files) => {
       if (!alive) return;
       shared = null; // the review screen has them now; the page shouldn't hold on past a lock
-      // none means the worker lost them before the page could ask (a reload, say): /add says "choose a file"
+      // none, when some did arrive, means the worker lost them before the page could ask (a reload, say): /add says "choose a file"
+      if (arrivedEmpty) noteEmptyShare();
       setPendingFiles(files);
       router.push("/add");
     });

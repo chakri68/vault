@@ -153,7 +153,11 @@ self.addEventListener("fetch", (event) => {
         const form = await request.formData();
         shared = form.getAll("files").filter((f) => f instanceof File);
       } catch { shared = []; }
-      return Response.redirect("/?shared=1", 303);
+      // The count goes along because none is a real case, and not ours: Chrome 153 on
+      // Android drops the files before it builds this request (its new check on the
+      // sharing app's permission turns down ordinary grants), so the body arrives
+      // well-formed and empty. Only this worker sees that; the page has to be told.
+      return Response.redirect("/?shared=" + shared.length, 303);
     })());
     return;
   }

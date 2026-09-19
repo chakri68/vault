@@ -21,6 +21,27 @@ export function peekPendingFiles(): File[] {
   return pending;
 }
 
+/**
+ * The share sheet opened the app and handed over nothing: the browser dropped the
+ * file on the way in. The review screen says so instead of "nothing to add", which
+ * would read as the person's mistake. Same peek-then-take shape as the files.
+ */
+let emptyShare = false;
+
+export function noteEmptyShare(): void {
+  emptyShare = true;
+}
+
+export function peekEmptyShare(): boolean {
+  return emptyShare;
+}
+
+export function takeEmptyShare(): boolean {
+  const out = emptyShare;
+  emptyShare = false;
+  return out;
+}
+
 export function onPendingFiles(listener: () => void): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);

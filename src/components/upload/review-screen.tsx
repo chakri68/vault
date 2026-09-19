@@ -22,7 +22,7 @@ import type { IndexEntry } from "@/schemas/index";
 import { TEMPORARY_OPTIONS, type TemporaryChoice, dateInputToIso, kindLabel, mimeTypeFor, temporaryExpiry } from "./dates";
 import { useFilePicker } from "./file-picker";
 import { CategoryPicker, PeoplePicker } from "./meta-pickers";
-import { onPendingFiles, peekPendingFiles, takePendingFiles } from "./pending-files";
+import { onPendingFiles, peekEmptyShare, peekPendingFiles, takeEmptyShare, takePendingFiles } from "./pending-files";
 
 type Bytes = Uint8Array<ArrayBuffer>;
 
@@ -65,6 +65,8 @@ export function ReviewScreen() {
   const [incoming, setIncoming] = useState<File[]>(() => peekPendingFiles());
   const [items, setItems] = useState<Item[]>([]);
   const [reading, setReading] = useState(() => peekPendingFiles().length > 0);
+  // the share sheet brought them here, and the browser left the file behind
+  const [emptyShare] = useState(() => peekEmptyShare());
 
   const [category, setCategory] = useState<string | undefined>();
   const [owners, setOwners] = useState<string[]>(() => (state.prefs.activeProfileId ? [state.prefs.activeProfileId] : []));
@@ -98,6 +100,7 @@ export function ReviewScreen() {
   // files that arrive while this screen is already open (a second drop) replace the batch
   useEffect(() => {
     takePendingFiles();
+    takeEmptyShare();
     return onPendingFiles(() => {
       const next = takePendingFiles();
       if (next.length) {
@@ -274,9 +277,15 @@ export function ReviewScreen() {
         {picker.input}
         <TopBar backLabel="Documents" backHref="/" />
         <ScreenHeader title="Add a document" size="title" />
-        <Banner tone="info" title="Nothing to add" secondaryAction={{ label: "Choose a file", onClick: picker.open }}>
-          Choose a file to start. If you were in the middle of adding one, choose it again: files are never kept until you save them.
-        </Banner>
+        {emptyShare ? (
+          <Banner tone="warn" title="The file didn't come through" secondaryAction={{ label: "Choose a file", onClick: picker.open }}>
+            Your phone opened the vault but left the file behind. This is a fault in the current version of Chrome, not something you did. Choose the file here instead. If it&rsquo;s only open in another app, save it to your phone first.
+          </Banner>
+        ) : (
+          <Banner tone="info" title="Nothing to add" secondaryAction={{ label: "Choose a file", onClick: picker.open }}>
+            Choose a file to start. If you were in the middle of adding one, choose it again: files are never kept until you save them.
+          </Banner>
+        )}
       </Screen>
     );
   }
