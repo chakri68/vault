@@ -55,6 +55,12 @@ export interface SyncStatus {
   /** documents, edits and deletions not yet saved to the store */
   pending: number;
   problem?: "offline" | "signed-out" | "conflict" | "needs-repair" | "server";
+  /**
+   * What the last failure actually was, for Settings → Technical details: an
+   * HTTP status and our own error code, never a path, an id or a provider's
+   * response body.
+   */
+  detail?: string;
 }
 
 export interface Orphan {
@@ -80,6 +86,14 @@ export interface EngineOptions {
   onChange?: (index: VaultIndex, status: SyncStatus) => void;
   /** override in tests to exercise multi-part objects without 4 MB fixtures */
   partSize?: number;
+}
+
+/** Status and our own error code only. Deliberately not the message of an arbitrary error: those can quote things. */
+function describeFailure(e: unknown): string {
+  const x = e as { name?: string; status?: number; code?: string; detail?: string };
+  const when = new Date().toISOString();
+  if (typeof x?.status === "number") return `${when} · HTTP ${x.status} ${x.code ?? ""}${x.detail ? ` · ${x.detail}` : ""}`.trim();
+  return `${when} · ${x?.name ?? "Error"}`;
 }
 
 const emptyDirty = (): Dirty => ({ index: false, uploads: [], sidecars: [], deletes: [] });
@@ -586,7 +600,16 @@ export class VaultEngine {
 
   private async syncOnce(opts: { replaceUnreadableRemote?: boolean }): Promise<boolean> {
     if (this.closed) return false;
-    if (!this.hasPending()) return true;
+    if (!this.hasPending()) {
+      // Nothing left to save, so there is nothing left to warn about. Without
+      // this a failure that got resolved some other way (its work was cancelled,
+      // or a later attempt carried it) leaves the warning up forever.
+      if (this.status.problem && this.status.problem !== "needs-repair") {
+        this.clearProblem();
+        this.emit();
+      }
+      return true;
+    }
     this.status.syncing = true;
     this.emit();
     try {
@@ -623,10 +646,20 @@ export class VaultEngine {
         await this.persistDirty();
       }
       if (this.dirty.index) await this.pushIndex(false); // a sidecar merge pulled in someone else's edit
-      // 4. deletions, which the server checks against the index version we just wrote
+      // 4. Deletions, which the server checks against the index version we just wrote.
+      // By now the tombstone is in the index, so the person's change IS saved; removing
+      // the files is housekeeping. If it stumbles (the store can lag a moment behind its
+      // own write, and then refuses our version), keep it on the list and try again on
+      // the next pass. It isn't worth a warning that says changes weren't saved, because
+      // they were. Only being offline stops the loop.
       for (const id of [...this.dirty.deletes]) {
         if (!this.isAdmin()) break;
-        if (this.remoteVersion) await this.remote.deleteObject(id, this.remoteVersion);
+        try {
+          if (this.remoteVersion) await this.remote.deleteObject(id, this.remoteVersion);
+        } catch (e) {
+          if (this.classify(e) instanceof OfflineError) throw e;
+          continue;
+        }
         this.dirty.deletes = this.dirty.deletes.filter((x) => x !== id);
         await this.persistDirty();
       }
@@ -635,6 +668,7 @@ export class VaultEngine {
       return !this.hasPending();
     } catch (e) {
       const err = this.classify(e);
+      this.status.detail = describeFailure(err);
       this.setProblem(
         err instanceof OfflineError ? "offline"
         : err instanceof IndexUnreadableError ? "needs-repair"
@@ -893,6 +927,7 @@ export class VaultEngine {
 
   private clearProblem() {
     this.status.problem = undefined;
+    this.status.detail = undefined;
   }
 
   private emit() {

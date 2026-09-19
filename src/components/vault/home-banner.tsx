@@ -136,6 +136,7 @@ export function HomeBanner() {
         tone="danger"
         title="Some changes haven't been saved yet"
         action={{ label: "Try again", onClick: () => void rpc.syncNow() }}
+        secondaryAction={{ label: "What went wrong", href: "/settings/technical" }}
       >
         They&apos;re safe on this phone, and we&apos;ll keep trying.
       </Banner>

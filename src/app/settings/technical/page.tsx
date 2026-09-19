@@ -79,6 +79,11 @@ export default function TechnicalPage() {
       <Section>
         <GroupLabel>This device</GroupLabel>
         <Group>
+          <KeyValueRow
+            label="Saving to storage"
+            value={state.sync?.problem ? `Problem: ${state.sync.problem}` : state.sync?.pending ? `${state.sync.pending} waiting` : "Up to date"}
+          />
+          {state.sync?.detail && <KeyValueRow label="Last failure" value={state.sync.detail} />}
           <KeyValueRow label="Signed in as" value={state.role === "admin" ? "Can manage the vault" : "Can add and edit"} />
           <KeyValueRow label="Documents" value={String(entries.length)} />
           <KeyValueRow label="Stored size (encrypted)" value={formatBytes(stored)} />

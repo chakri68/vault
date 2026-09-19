@@ -438,3 +438,66 @@ describe("offline (§17)", () => {
     expect((await fresh.fetchDocument(added.ids[0])).header.name).toBe("Taken at the counter");
   });
 });
+
+describe("the 'changes not saved' warning", () => {
+  it("says what failed, and doesn't outlive its cause", async () => {
+    const { provider, device } = await setup();
+    const { engine } = await device();
+    await settled(engine);
+
+    provider.failNext = { op: "put", match: /^index\.vault$/, error: Object.assign(new Error("boom"), { status: 503, code: "storage-unavailable", detail: "GitHub rate limit reached" }) };
+    const { ids } = await engine.addDocuments([doc("Will be cancelled")]);
+    expect(engine.getStatus().problem).toBe("server");
+    expect(engine.getStatus().detail).toMatch(/HTTP 503 storage-unavailable · GitHub rate limit reached/);
+    expect(engine.getStatus().detail).not.toContain(ids[0]); // never an id
+
+    await settled(engine); // the retry carries it
+    expect(engine.getStatus().problem).toBeUndefined();
+    expect(engine.getStatus().detail).toBeUndefined();
+  });
+
+  it("clears when the failed work stops being needed, even though no sync ever 'succeeds' for it", async () => {
+    const { provider, vmk } = await setup();
+    let down = true;
+    const real = new ProviderRemote(provider);
+    const flaky = new Proxy(real, {
+      get(target, prop) {
+        const v = (target as unknown as Record<string | symbol, unknown>)[prop];
+        if (typeof v !== "function") return v;
+        return (...args: unknown[]) => (down && String(prop).startsWith("put")
+          ? Promise.reject(Object.assign(new Error("x"), { status: 500, code: "server" }))
+          : (v as (...a: unknown[]) => unknown).apply(target, args));
+      },
+    });
+    const engine = new VaultEngine({ remote: flaky, local: new MemoryLocalStore(), vmk });
+    await engine.open();
+    await engine.sync();
+    expect(engine.getStatus().problem).toBe("server");
+
+    // the store recovers, and by then there is nothing of ours left to push that it doesn't already have
+    down = false;
+    await settled(engine);
+    expect(engine.getStatus().problem).toBeUndefined();
+    expect(await engine.sync()).toBe(true);
+    expect(engine.getStatus().problem).toBeUndefined();
+  });
+});
+
+describe("permanent delete", () => {
+  it("a hiccup removing the files doesn't claim the change wasn't saved, and the files still go", async () => {
+    const { provider, device } = await setup();
+    const { engine } = await device();
+    const { ids } = await engine.addDocuments([doc("Delete me")]);
+    await settled(engine);
+
+    provider.failNext = { op: "delete", match: /objects\//, error: Object.assign(new Error("lag"), { name: "PreconditionFailedError" }) };
+    const alarms: string[] = [];
+    (engine as unknown as { onChange: (i: unknown, st: { problem?: string }) => void }).onChange = (_i, st) => { if (st.problem) alarms.push(st.problem); };
+    await engine.deletePermanently(ids[0]);
+    await settled(engine);
+    expect(engine.index.tombstones[ids[0]]).toBeDefined(); // the delete itself is saved
+    expect(alarms).toEqual([]); // so at no point did it claim otherwise
+    expect(await provider.list("objects/")).toEqual([]); // and the retry removed the files
+    expect(engine.getStatus().pending).toBe(0);
+  });
+});
