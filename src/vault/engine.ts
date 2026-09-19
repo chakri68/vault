@@ -127,6 +127,8 @@ export class VaultEngine {
   private syncAgain = false;
   private syncChain: Promise<boolean> = Promise.resolve(true);
   private closed = false;
+  /** whether this session has already checked if queued file cleanup is still needed */
+  private deletesChecked = false;
   /** set once a store says it can't stage; from then on files are written one by one */
   private batchUnsupported = false;
   /** bumped on every local change, so an in-flight push can tell its snapshot went stale */
@@ -646,22 +648,34 @@ export class VaultEngine {
         await this.persistDirty();
       }
       if (this.dirty.index) await this.pushIndex(false); // a sidecar merge pulled in someone else's edit
-      // 4. Deletions, which the server checks against the index version we just wrote.
-      // By now the tombstone is in the index, so the person's change IS saved; removing
-      // the files is housekeeping. If it stumbles (the store can lag a moment behind its
-      // own write, and then refuses our version), keep it on the list and try again on
-      // the next pass. It isn't worth a warning that says changes weren't saved, because
-      // they were. Only being offline stops the loop.
-      for (const id of [...this.dirty.deletes]) {
-        if (!this.isAdmin()) break;
-        try {
-          if (this.remoteVersion) await this.remote.deleteObject(id, this.remoteVersion);
-        } catch (e) {
-          if (this.classify(e) instanceof OfflineError) throw e;
-          continue;
+      // 4. Removing the files of permanently deleted documents. By now the tombstone
+      // is in the index, so the person's change IS saved; this is housekeeping.
+      if (this.dirty.deletes.length > 0) {
+        // Anyone can see whether the files are still there, and if they're gone the
+        // note is finished whoever is holding it. (Another device, or an earlier attempt
+        // whose reply never arrived, may have done the work.) Without this a device that
+        // signs in as a member carries the note forever, because only an admin may delete.
+        const stillThere = await this.remote.listObjects().then((all) => new Set(all.map((o) => o.id)), () => null);
+        if (stillThere) {
+          this.dirty.deletes = this.dirty.deletes.filter((id) => stillThere.has(id));
+          await this.persistDirty();
         }
-        this.dirty.deletes = this.dirty.deletes.filter((x) => x !== id);
-        await this.persistDirty();
+        this.deletesChecked = true;
+        for (const id of [...this.dirty.deletes]) {
+          if (!this.isAdmin()) break; // left for a session that's allowed to; reconcile also clears these
+          try {
+            // the server wants the index version we hold, as proof of a live, unlocked client
+            if (this.remoteVersion) await this.remote.deleteObject(id, this.remoteVersion);
+          } catch (e) {
+            // The store can lag a moment behind its own write and then refuse our version.
+            // Try again next pass; it isn't worth a warning that says changes weren't saved,
+            // because they were. Only being offline stops the loop.
+            if (this.classify(e) instanceof OfflineError) throw e;
+            continue;
+          }
+          this.dirty.deletes = this.dirty.deletes.filter((x) => x !== id);
+          await this.persistDirty();
+        }
       }
       this.clearProblem();
       if (!this.hasPending()) await this.local.deleteBlob(BLOB.pendingIndex);
@@ -909,11 +923,19 @@ export class VaultEngine {
   }
 
   private hasPending(): boolean {
-    return this.pendingCount() > 0 || this.dirty.index;
+    // File cleanup is worth a pass if this session may do it, or if we haven't yet
+    // looked to see whether it's already been done. A member who has looked stops asking.
+    const cleanup = this.dirty.deletes.length > 0 && (this.isAdmin() || !this.deletesChecked);
+    return this.pendingCount() > 0 || this.dirty.index || cleanup;
   }
 
+  /**
+   * What the person is waiting on: documents and edits not yet in the store.
+   * Not file cleanup after a delete: that change is already saved, and "Saving 1
+   * change…" over a finished delete is a lie that never goes away.
+   */
   private pendingCount(): number {
-    return new Set([...this.dirty.uploads, ...this.dirty.sidecars, ...this.dirty.deletes]).size;
+    return new Set([...this.dirty.uploads, ...this.dirty.sidecars]).size;
   }
 
   private classify(e: unknown): unknown {

@@ -501,3 +501,72 @@ describe("permanent delete", () => {
     expect(engine.getStatus().pending).toBe(0);
   });
 });
+
+describe("leftover cleanup notes", () => {
+  /** a device that ran setup's self-test and was closed with the file cleanup still owed */
+  async function deviceWithLeftoverNote() {
+    const { provider, vmk } = await setup();
+    const local = new MemoryLocalStore();
+    const session = { admin: true, storeRefusesDeletes: true };
+    const realDelete = provider.delete.bind(provider);
+    provider.delete = async (path: string, opts?: { ifMatch?: string }) => {
+      if (session.storeRefusesDeletes && path.startsWith("objects/")) throw Object.assign(new Error("lag"), { name: "PreconditionFailedError" });
+      return realDelete(path, opts);
+    };
+    const make = () => new VaultEngine({ remote: new ProviderRemote(provider), local, vmk, isAdmin: () => session.admin });
+
+    const first = make();
+    await first.open();
+    const { ids } = await first.addDocuments([doc("Setup check")]);
+    await settled(first);
+    await first.deletePermanently(ids[0]);
+    await first.sync();
+    expect(first.index.tombstones[ids[0]]).toBeDefined();
+    expect(first.getStatus().problem).toBeUndefined(); // the delete is saved: no alarm
+    expect(first.getStatus().pending).toBe(0); // and cleanup is not a "change" anyone is waiting on
+    first.close();
+    const owed = () => JSON.parse(new TextDecoder().decode(local.blobs.get("dirty.json")!)).deletes as string[];
+    expect(owed()).toEqual([ids[0]]);
+    return { provider, make, session, owed, realDelete };
+  }
+
+  it("a device that later signs in as a member drops a finished cleanup note", async () => {
+    const { provider, make, session, owed, realDelete } = await deviceWithLeftoverNote();
+    // someone else (or a retry whose reply was lost) finishes the job
+    for (const f of await provider.list("objects/")) await realDelete(f.path);
+
+    session.admin = false; // the same device, unlocked with the family password
+    const later = make();
+    await later.open();
+    await settled(later);
+    expect(owed()).toEqual([]);
+    expect(later.getStatus().pending).toBe(0);
+    expect(later.getStatus().problem).toBeUndefined();
+  });
+
+  it("a member who can't finish a cleanup keeps the note, shows nothing, and doesn't keep polling the store", async () => {
+    const { provider, make, session, owed } = await deviceWithLeftoverNote();
+    session.admin = false;
+    session.storeRefusesDeletes = false;
+    const member = make();
+    await member.open();
+    await settled(member);
+    expect(member.getStatus().pending).toBe(0);
+    expect((await provider.list("objects/")).length).toBeGreaterThan(0); // a member may not remove files
+    expect(owed().length).toBe(1); // so the note waits for someone who may
+
+    let lists = 0;
+    const realList = provider.list.bind(provider);
+    provider.list = async (prefix?: string) => { lists++; return realList(prefix); };
+    for (let i = 0; i < 5; i++) await member.sync();
+    expect(lists).toBe(0); // it looked once; it doesn't ask again every 30 seconds
+    member.close();
+
+    session.admin = true; // the next admin session on this device finishes it
+    const again = make();
+    await again.open();
+    await settled(again);
+    expect(await realList("objects/")).toEqual([]);
+    expect(owed()).toEqual([]);
+  });
+});
