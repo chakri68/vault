@@ -89,9 +89,12 @@ self.addEventListener("message", (event) => {
   }
 });
 
+// The manifest isn't here on purpose: it has no hash in its name, and fv-static
+// outlives builds, so a cached copy would be the only one Chrome's update check
+// ever saw, and an installed app would never hear about a change to it.
 const isStatic = (url) =>
   url.pathname.startsWith("/_next/static/") || url.pathname.startsWith("/pdfjs/") ||
-  url.pathname.startsWith("/icons/") || url.pathname === "/icon.png" || url.pathname === "/manifest.webmanifest";
+  url.pathname.startsWith("/icons/") || url.pathname === "/icon.png";
 
 // Turbopack starts workers from a bootstrap URL with a #fragment; a fragment never
 // reaches the network, so it isn't part of what's cached either.

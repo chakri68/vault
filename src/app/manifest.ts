@@ -11,8 +11,11 @@ export default function manifest(): MetadataRoute.Manifest {
     scope: "/",
     display: "standalone",
     orientation: "portrait",
-    background_color: "#F1F2EE",
-    theme_color: "#F1F2EE",
+    // Android paints the launch splash in these before any CSS loads, and a manifest
+    // can't ask prefers-color-scheme. So it's the icon's own fill in both themes: the
+    // tile melts into it and only the cabinet shows. No more flashbang at midnight.
+    background_color: "#161917",
+    theme_color: "#161917",
     icons: [
       { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
       { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
