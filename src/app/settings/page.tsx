@@ -1,8 +1,11 @@
 "use client";
 
-import { FileText, HardDrive, KeyRound, Lock, RefreshCw, ShieldCheck, Smartphone, Timer, Trash2, Users, Wrench } from "lucide-react";
+import { Download, FileText, HardDrive, KeyRound, Lock, RefreshCw, ShieldCheck, Smartphone, Timer, Trash2, Users, Wrench } from "lucide-react";
 import { useState } from "react";
+import { unlockWords } from "@/client/passkey";
 import { useVault } from "@/client/vault-provider";
+import { promptInstall, useInstallState } from "@/components/auth/install-prompt";
+import { InstallSteps } from "@/components/auth/setup-install-step";
 import { reloadApp } from "@/components/pwa/service-worker";
 import { BackupPill } from "@/components/settings/backup-pill";
 import { Button, Group, GroupLabel, Row, Screen, ScreenHeader, Section, SegmentedControl, Sheet, useToast } from "@/components/ui";
@@ -29,6 +32,9 @@ export default function SettingsPage() {
   const [lockSheet, setLockSheet] = useState(false);
   const [reloadSheet, setReloadSheet] = useState(false);
   const [reloading, setReloading] = useState(false);
+  const install = useInstallState();
+  const [device] = useState(() => unlockWords().device);
+  const [installSheet, setInstallSheet] = useState(false);
 
   const reload = async () => {
     setReloading(true);
@@ -46,6 +52,19 @@ export default function SettingsPage() {
   return (
     <Screen bottomBar gap="lg">
       <ScreenHeader title="Settings" />
+
+      {install !== "installed" && (
+        <Section>
+          <Group>
+            <Row
+              icon={Download}
+              label={`Install on this ${device}`}
+              description="Opens like any other app, and still starts locked"
+              onClick={() => (install === "prompt" ? void promptInstall().catch(() => false) : setInstallSheet(true))}
+            />
+          </Group>
+        </Section>
+      )}
 
       <Section>
         <GroupLabel>Family</GroupLabel>
@@ -120,6 +139,10 @@ export default function SettingsPage() {
             />
           ))}
         </Group>
+      </Sheet>
+
+      <Sheet open={installSheet} onOpenChange={setInstallSheet} title={`Install on this ${device}`}>
+        <InstallSteps />
       </Sheet>
 
       <Sheet open={reloadSheet} onOpenChange={(o) => !reloading && setReloadSheet(o)} title="Get the latest version">

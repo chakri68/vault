@@ -14,9 +14,7 @@ import { promptInstall, useCanInstall } from "./install-prompt";
  */
 export function SetupInstallStep({ onDone }: { onDone: () => void }) {
   const canInstall = useCanInstall();
-  const [platform] = useState(() => detectPlatform());
   const [busy, setBusy] = useState(false);
-  const ios = platform === "iphone" || platform === "ipad";
 
   const install = async () => {
     setBusy(true);
@@ -42,19 +40,28 @@ export function SetupInstallStep({ onDone }: { onDone: () => void }) {
         <p>It opens like any other app, and it&rsquo;s there when you&rsquo;re standing at a counter. It still starts locked, every time.</p>
       </AuthHeading>
 
-      {!canInstall && ios && (
-        <Group>
-          <Row label="1. Tap the Share button" description="It's in Safari's toolbar: a square with an arrow pointing up." />
-          <Row label="2. Choose Add to Home Screen" description="You may need to scroll down the list to find it." />
-          <Row label="3. Tap Add" />
-        </Group>
-      )}
-      {!canInstall && !ios && (
-        <p className="max-w-[65ch] text-callout text-ink-2">
-          Look in your browser&rsquo;s menu for <span className="font-semibold text-ink">Install</span> or{" "}
-          <span className="font-semibold text-ink">Add to Home screen</span>. If it isn&rsquo;t there, a bookmark works too.
-        </p>
-      )}
+      {!canInstall && <InstallSteps />}
     </AuthScreen>
+  );
+}
+
+/** For when the browser won't install on request: where its own menu item is. Settings shows these too. */
+export function InstallSteps() {
+  const [platform] = useState(() => detectPlatform());
+  if (platform === "iphone" || platform === "ipad") {
+    return (
+      <Group>
+        <Row label="1. Tap the Share button" description="It's in Safari's toolbar: a square with an arrow pointing up." />
+        <Row label="2. Choose Add to Home Screen" description="You may need to scroll down the list to find it." />
+        <Row label="3. Tap Add" />
+      </Group>
+    );
+  }
+  return (
+    <p className="max-w-[65ch] text-callout text-ink-2">
+      Look in your browser&rsquo;s menu for <span className="font-semibold text-ink">Install</span> or{" "}
+      <span className="font-semibold text-ink">Add to Home screen</span>. If it offers to open the app instead, it&rsquo;s
+      already installed. If neither is there, a bookmark works too.
+    </p>
   );
 }
