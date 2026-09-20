@@ -8,7 +8,7 @@ import { createRegistry, hashSecret, loadRegistry } from "@/server/registry";
 import { csrfToken, newSession, sessionCookie } from "@/server/session";
 import { readVaultJson, writeVaultJson } from "@/server/vault-files";
 
-// A write here is several GitHub API calls in a row. Say how long that may take rather than inherit a platform default.
+// A write here is a store round trip — on GitHub, six of them in a row. Say how long that may take rather than inherit a platform default.
 export const maxDuration = 60;
 
 const secret = z.string().regex(/^[A-Za-z0-9+/]{43}=$/); // 32 bytes, base64

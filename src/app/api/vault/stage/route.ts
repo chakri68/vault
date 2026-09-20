@@ -7,7 +7,7 @@ import { stageToken } from "@/server/session";
 import { batchingStore, slotOf } from "@/server/staging";
 import type { StageItem } from "@/vault/remote";
 
-// A write here is several GitHub API calls in a row. Say how long that may take rather than inherit a platform default.
+// A write here is a store round trip — on GitHub, six of them in a row. Say how long that may take rather than inherit a platform default.
 export const maxDuration = 60;
 
 const starts = (body: Uint8Array, magic: string) => [...magic].every((ch, i) => body[i] === ch.charCodeAt(0));

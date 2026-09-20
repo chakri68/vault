@@ -7,6 +7,7 @@ import { randomBytes } from "node:crypto";
  */
 export interface ServerEnv {
   storage:
+    | { provider: "r2"; accountId: string; bucket: string; accessKeyId: string; secretAccessKey: string }
     | { provider: "github"; token: string; owner: string; repo: string; branch: string }
     | { provider: "local-fs"; dir: string }
     | { provider: "unconfigured"; missing: string[] };
@@ -28,8 +29,28 @@ function read(): ServerEnv {
   const production = e.NODE_ENV === "production";
 
   let storage: ServerEnv["storage"];
-  const provider = e.STORAGE_PROVIDER ?? (e.GITHUB_PAT || e.GITHUB_TOKEN ? "github" : "local-fs");
-  if (provider === "github") {
+  // R2 first: during a migration both it and GitHub are configured at once, and
+  // R2 is where we're going. Set STORAGE_PROVIDER to be explicit about it.
+  const provider =
+    e.STORAGE_PROVIDER ??
+    (e.R2_ACCESS_KEY_ID ? "r2" : e.GITHUB_PAT || e.GITHUB_TOKEN ? "github" : "local-fs");
+  if (provider === "r2") {
+    const missing = [
+      !e.R2_ACCOUNT_ID && "R2_ACCOUNT_ID",
+      !e.R2_BUCKET && "R2_BUCKET",
+      !e.R2_ACCESS_KEY_ID && "R2_ACCESS_KEY_ID",
+      !e.R2_SECRET_ACCESS_KEY && "R2_SECRET_ACCESS_KEY",
+    ].filter((x): x is string => !!x);
+    storage = missing.length
+      ? { provider: "unconfigured", missing }
+      : {
+          provider: "r2",
+          accountId: e.R2_ACCOUNT_ID!,
+          bucket: e.R2_BUCKET!,
+          accessKeyId: e.R2_ACCESS_KEY_ID!,
+          secretAccessKey: e.R2_SECRET_ACCESS_KEY!,
+        };
+  } else if (provider === "github") {
     const token = e.GITHUB_PAT ?? e.GITHUB_TOKEN;
     const missing = [
       !token && "GITHUB_PAT",

@@ -6,7 +6,7 @@ import { PreconditionFailedError } from "@/storage/provider";
 import { INDEX_PATH } from "@/vault/index-model";
 import { deleteObjectFiles, groupObjects } from "@/vault/remote";
 
-// A write here is several GitHub API calls in a row. Say how long that may take rather than inherit a platform default.
+// A write here is a store round trip — on GitHub, six of them in a row. Say how long that may take rather than inherit a platform default.
 export const maxDuration = 60;
 
 /**

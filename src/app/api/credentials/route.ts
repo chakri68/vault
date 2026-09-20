@@ -1,7 +1,7 @@
 import { api, json } from "@/server/api";
 import { LIMITS } from "@/server/rate-limit";
 
-// A write here is several GitHub API calls in a row. Say how long that may take rather than inherit a platform default.
+// A write here is a store round trip — on GitHub, six of them in a row. Say how long that may take rather than inherit a platform default.
 export const maxDuration = 60;
 
 /** Ids, roles and dates. Device names are in vault.json, sealed, where the server can't read them. */

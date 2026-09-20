@@ -10,6 +10,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
+    "migrate:r2": "tsx scripts/migrate-to-r2.mts",
     "postinstall": "node scripts/copy-pdfjs.mjs"
   },
   "dependencies": {
@@ -38,6 +39,7 @@
     "fake-indexeddb": "^6.2.5",
     "fast-check": "^4.10.1",
     "tailwindcss": "^4",
+    "tsx": "^4.23.15",
     "typescript": "^5",
     "vitest": "^5.0.1"
   },

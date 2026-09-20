@@ -1,6 +1,6 @@
 # Family Vault
 
-A private document vault for the family: passports, Aadhaar, insurance, the property deed nobody can ever find. Everything gets encrypted on your device before it goes anywhere, and the "anywhere" is a private GitHub repo that only ever sees noise.
+A private document vault for the family: passports, Aadhaar, insurance, the property deed nobody can ever find. Everything gets encrypted on your device before it goes anywhere, and the "anywhere" is a Cloudflare R2 bucket that only ever sees noise.
 
 Why does this exist: because "where's Dad's passport scan" is a group-chat thread every single time, and the answer shouldn't be "scroll up in WhatsApp."
 
@@ -8,7 +8,7 @@ Why does this exist: because "where's Dad's passport scan" is a group-chat threa
 
 - **Your device does the crypto.** Each file gets its own random AES-256-GCM key. That key is wrapped by a vault master key, which is wrapped by whatever you unlock with. The server never sees a key, a filename, or a byte of plaintext.
 - **Three ways in, each independent:** the family password (Argon2id), a passkey (WebAuthn PRF, so the secret stays in the phone's secure hardware), or the printed recovery code. Setup won't finish until you've typed the recovery code back. No skip link. That's deliberate.
-- **The store is dumb on purpose.** `StorageProvider` is one interface: GitHub today, a folder on disk for dev, anything S3-shaped later. Every provider holds identical bytes, so a backup taken to one restores through another.
+- **The store is dumb on purpose.** `StorageProvider` is one interface: R2 today, a private GitHub repo before that, a folder on disk for dev. Every provider holds identical bytes, so a backup taken to one restores through another — which is also what made swapping the whole store out a ~200-line adapter.
 - **Every file carries its own label.** Metadata lives encrypted inside each object *and* in an editable sidecar, so the index is just a cache. Delete it and Repair rebuilds it from the files.
 - **Offline is the point.** Ciphertext is cached in IndexedDB, the app shell in a service worker. Airplane mode, hard reload, unlock, open the PDF. It works; it's tested.
 - **Concurrent edits merge, they don't clobber.** The index merge is a CRDT (per-field last-writer-wins, tombstones win), property-tested for commutativity/associativity/idempotence. Offline replay is literally just another merge.
@@ -23,9 +23,16 @@ cp .env.example .env      # fill in storage + SESSION_SECRET
 npm run dev
 ```
 
-No GitHub repo handy? `STORAGE_PROVIDER=local-fs` writes the (encrypted) store to `.vault-store/` and everything else behaves the same.
+Nothing set up yet? `STORAGE_PROVIDER=local-fs` writes the (encrypted) store to `.vault-store/` and everything else behaves the same.
 
-For GitHub: make a **private**, empty repo, mint a fine-grained token with *Contents: read/write* on just that repo, and set `GITHUB_PAT`, `GITHUB_OWNER`, `GITHUB_REPOSITORY`. The app refuses a public repo.
+For R2: make a bucket, then R2 → **Manage API Tokens** → create one scoped *Object Read & Write* on just that bucket, and set `R2_ACCOUNT_ID`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`. Those are S3 keys — a Cloudflare API token or a `wrangler login` won't authenticate against the S3 endpoint. Leave the bucket private: don't attach an `r2.dev` URL or a custom domain. Nothing here can detect one, because bucket visibility is invisible over the S3 API.
+
+GitHub still works (`STORAGE_PROVIDER=github` + `GITHUB_PAT`, `GITHUB_OWNER`, `GITHUB_REPOSITORY`; private repo, fine-grained token, *Contents: read/write*). It's slower — one write is six sequential API calls against R2's one — and it's kept because it's a working provider, not because you want it. Moving an existing store across:
+
+```bash
+npx tsx scripts/migrate-to-r2.mts            # dry run
+npx tsx scripts/migrate-to-r2.mts --apply    # copies, then reads every file back and hashes it
+```
 
 ```bash
 npm test                  # crypto, merge (property-based), engine, backup/restore
@@ -51,7 +58,7 @@ Covers spec §40.7–9: every route rejects without a session, a session alone c
 ```
 src/crypto      AES-GCM, HKDF, Argon2id, container + sidecar formats, padding, recovery code
 src/vault       index model, CRDT merge, the engine (upload/sync/rebuild/reconcile), backup + restore
-src/storage     the provider interface; github, local-fs, local-folder (browser), memory (tests)
+src/storage     the provider interface; r2 (+ sigv4), github, local-fs, local-folder (browser), memory (tests)
 src/server      sessions, CSRF, write-auth, rate limits, registry, WebAuthn
 src/client      API client, the session core (runs in a Web Worker and is the only thing that holds keys)
 src/components  Almirah UI primitives + screens

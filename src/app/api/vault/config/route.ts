@@ -6,7 +6,7 @@ import { storeDescription } from "@/server/store";
 import { readVaultJson } from "@/server/vault-files";
 import { relyingParty } from "@/server/webauthn";
 
-// A write here is several GitHub API calls in a row. Say how long that may take rather than inherit a platform default.
+// A write here is a store round trip — on GitHub, six of them in a row. Say how long that may take rather than inherit a platform default.
 export const maxDuration = 60;
 
 /**
