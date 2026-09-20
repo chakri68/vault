@@ -56,7 +56,7 @@ const whereWords = () => {
  */
 export function ReviewScreen() {
   const router = useRouter();
-  const { state, rpc } = useVault();
+  const { state, rpc, online } = useVault();
   const { toast } = useToast();
   const index = state.index;
   const maxBytes = state.config?.maxObjectBytes ?? 50 * 1024 * 1024;
@@ -249,7 +249,12 @@ export function ReviewScreen() {
       toast({
         message: synced
           ? (ids.length === 1 ? "Saved to your vault" : `Saved ${ids.length} documents to your vault`)
-          : `Saved ${where}. It'll upload when you're back online.`,
+          // Not synced doesn't mean offline. The store can refuse a write while the
+          // phone is on 5G, and telling someone to get back online when they never
+          // left sends them to look at the wrong thing.
+          : online
+            ? `Saved ${where}. It hasn't reached the vault yet, but it'll keep trying.`
+            : `Saved ${where}. It'll upload when you're back online.`,
       });
       router.replace(ids.length === 1 ? `/doc?id=${ids[0]}` : "/");
     } catch {

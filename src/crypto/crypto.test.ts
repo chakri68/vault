@@ -263,13 +263,26 @@ describe("recovery code", () => {
     expect(await parseRecoveryCode(code.slice(1))).toEqual({ ok: false, problem: "length" });
     expect(await parseRecoveryCode("U" + code.slice(1))).toEqual({ ok: false, problem: "characters" });
 
+    // The check symbol is five bits of a hash, so a typo randomises it and is
+    // missed about one time in 32. Over the 31 positions of a single code that's
+    // Binomial(31, 31/32): it lands on 28 or worse roughly once in 57 runs, which
+    // made this flaky against a fixed threshold. Measure the rate over many codes
+    // and every substitution instead — same property, no coin flip.
     let caught = 0;
-    for (let i = 0; i < 31; i++) {
-      const swap = ALPHABET[(ALPHABET.indexOf(code[i]) + 7) % 32];
-      const typo = code.slice(0, i) + swap + code.slice(i + 1);
-      if (!(await parseRecoveryCode(typo)).ok) caught++;
+    let tried = 0;
+    for (let n = 0; n < 12; n++) {
+      const sample = await generateRecoveryCode();
+      for (let i = 0; i < 31; i++) {
+        for (const delta of [1, 7, 19]) {
+          const swap = ALPHABET[(ALPHABET.indexOf(sample[i]) + delta) % 32];
+          if (swap === sample[i]) continue;
+          tried++;
+          if (!(await parseRecoveryCode(sample.slice(0, i) + swap + sample.slice(i + 1))).ok) caught++;
+        }
+      }
     }
-    expect(caught).toBeGreaterThanOrEqual(28); // 5-bit check: ~97% of single typos
+    expect(tried).toBeGreaterThan(1000);
+    expect(caught / tried).toBeGreaterThan(0.93); // expected 31/32 = 0.969, ~7 sd of headroom
   });
 });
 
