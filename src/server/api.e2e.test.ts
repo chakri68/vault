@@ -202,9 +202,13 @@ describe.skipIf(!BASE)("API security, over HTTP", () => {
   });
 
   it("a store that can't stage says so, and the engine carries on the long way", async () => {
-    // local-fs has no staging: 501, never a silent success
-    expect(await status(admin.api.commitStaged([{ kind: "index", token: "x" }, { kind: "label", id: newId(), token: "y" }], {}))).toBe(501);
+    // Said up front, so the client never posts a body to be refused. local-fs
+    // can't stage, and neither can R2.
+    expect((await admin.api.config()).storage.batching).toBe(false);
     expect(await admin.api.stage({ kind: "index" }, new Uint8Array(80) as Bytes)).toBeNull();
+
+    // and the server still refuses outright, for a client that asks anyway
+    expect(await status(admin.api.commitStaged([{ kind: "index", token: "x" }, { kind: "label", id: newId(), token: "y" }], {}))).toBe(501);
   });
 
   it("rejects paths and payloads that aren't what they claim", async () => {

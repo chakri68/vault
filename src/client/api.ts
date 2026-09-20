@@ -8,7 +8,7 @@ import type { StageItem, StagedItem, StoredObject, VaultRemote } from "@/vault/r
 
 export interface PublicConfig {
   initialized: boolean | null;
-  storage: { ok: boolean; provider?: string; versioning?: boolean; location?: string; problem?: string; missing?: string[] };
+  storage: { ok: boolean; provider?: string; versioning?: boolean; batching?: boolean; location?: string; problem?: string; missing?: string[] };
   rpId: string;
   maxObjectBytes: number;
   setupTokenRequired: boolean;
@@ -43,6 +43,12 @@ export class ApiClient implements VaultRemote {
   role: Role | null = null;
   /** K_w, derived from the unlocked vault key. Signs every write. */
   private writeAuthKey: Bytes | null = null;
+  /**
+   * Whether the store can stage and commit several files at once, as told by
+   * /api/vault/config. Undefined until config has been read, and then we try and
+   * find out the old way — a 501 is still handled, this only avoids asking.
+   */
+  private canBatch: boolean | undefined = undefined;
 
   constructor(private fetchImpl: FetchLike = (i, init) => fetch(i, init), private base = "") {}
 
@@ -131,7 +137,9 @@ export class ApiClient implements VaultRemote {
   // ───────────────────────── auth ─────────────────────────
 
   async config(): Promise<PublicConfig> {
-    return (await this.call("GET", "/api/vault/config")).json();
+    const config = (await (await this.call("GET", "/api/vault/config")).json()) as PublicConfig;
+    this.canBatch = config.storage?.batching;
+    return config;
   }
 
   async setup(body: {
@@ -234,6 +242,11 @@ export class ApiClient implements VaultRemote {
   }
 
   async stage(item: StageItem, data: Bytes): Promise<string | null> {
+    // Config already said this store writes files one at a time. Answering here
+    // saves posting the whole body to be told 501 — which happened on the first
+    // upload after every worker restart, because the engine's flag doesn't
+    // outlive the worker.
+    if (this.canBatch === false) return null;
     try {
       const res = await this.call("PUT", `/api/vault/stage?kind=${item.kind}`, {
         body: data, write: true,

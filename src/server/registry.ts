@@ -2,6 +2,7 @@ import "server-only";
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import { NotFoundError, PreconditionFailedError, isNotFound, isPreconditionFailed } from "@/storage/provider";
+import { env } from "./env";
 import { store } from "./store";
 
 /**
@@ -56,14 +57,24 @@ export function verifySecret(secret: Buffer, stored: z.infer<typeof SecretHashSc
 }
 
 const g = globalThis as unknown as { __fvRegistry?: { value: Registry; version: string; at: number } | null };
-// Read on nearly every request, and on GitHub a read is about a second. Our own
-// writes refresh the cache immediately; the TTL only bounds how long *another*
-// server instance takes to notice a removed device or a sign-out-everywhere.
-const TTL_MS = 60_000;
+/**
+ * Read on nearly every request. Our own writes refresh the cache immediately, so
+ * the TTL only bounds how long *another* server instance takes to notice a
+ * removed device or a sign-out-everywhere. That makes it a revocation window,
+ * and shorter is safer.
+ *
+ * A minute was the price of GitHub, where a read costs about a second. On any
+ * store with quick reads — R2 answers in tens of milliseconds from the same
+ * region — the window can be much smaller for one cheap read every few seconds
+ * per warm instance. GitHub keeps the long TTL, because it is still the
+ * documented rollback and a five-second one there would put a second onto
+ * roughly every request.
+ */
+const ttlMs = () => (env().storage.provider === "github" ? 60_000 : 5_000);
 
 export async function loadRegistry(fresh = false): Promise<{ registry: Registry; version: string } | null> {
   const cached = g.__fvRegistry;
-  if (!fresh && cached && Date.now() - cached.at < TTL_MS) return { registry: cached.value, version: cached.version };
+  if (!fresh && cached && Date.now() - cached.at < ttlMs()) return { registry: cached.value, version: cached.version };
   try {
     const { data, version } = await (await store()).get(REGISTRY_PATH);
     const registry = RegistrySchema.parse(JSON.parse(Buffer.from(data).toString("utf8")));

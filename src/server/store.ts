@@ -30,10 +30,19 @@ export async function store(): Promise<StorageProvider> {
   return g.__fvStore;
 }
 
-export function storeDescription(): { provider: string; versioning: boolean; location?: string; missing?: string[] } {
+/**
+ * `batching` is whether the store can stage blobs and land several files in one
+ * write. Told to the client up front so it doesn't have to find out by having a
+ * request refused: without it, the first upload after every worker restart posts
+ * a body to /api/vault/stage only to be answered 501.
+ *
+ * Derived from the provider, not by asking the store, so this stays a pure read
+ * of the environment and the public config route never opens a connection.
+ */
+export function storeDescription(): { provider: string; versioning: boolean; batching: boolean; location?: string; missing?: string[] } {
   const cfg = env().storage;
-  if (cfg.provider === "r2") return { provider: "Cloudflare R2", versioning: false, location: cfg.bucket };
-  if (cfg.provider === "github") return { provider: "GitHub", versioning: true, location: `${cfg.owner}/${cfg.repo}` };
-  if (cfg.provider === "local-fs") return { provider: "A folder on this server", versioning: false, location: cfg.dir };
-  return { provider: "none", versioning: false, missing: cfg.missing };
+  if (cfg.provider === "r2") return { provider: "Cloudflare R2", versioning: false, batching: false, location: cfg.bucket };
+  if (cfg.provider === "github") return { provider: "GitHub", versioning: true, batching: true, location: `${cfg.owner}/${cfg.repo}` };
+  if (cfg.provider === "local-fs") return { provider: "A folder on this server", versioning: false, batching: false, location: cfg.dir };
+  return { provider: "none", versioning: false, batching: false, missing: cfg.missing };
 }
