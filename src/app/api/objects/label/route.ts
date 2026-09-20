@@ -18,7 +18,11 @@ export const PUT = api({ auth: "session", limit: LIMITS.objectPut, write: true, 
   if (body.length < 110 || body[0] !== 0x46 || body[1] !== 0x56 || body[2] !== 0x4d || body[3] !== 0x44) {
     throw new ApiError(400, "bad-request"); // "FVMD"
   }
-  const create = req.headers.get("if-none-match") === "*";
+  // `x-fv-if-none-match`, because a real `If-None-Match: *` never survives the
+  // trip: Next treats the route's 200 as a conditional-GET hit and rewrites it to
+  // a bodyless 304, so the sidecar lands and the client is told the write failed.
+  // The standard name is still honoured for clients loaded before this shipped.
+  const create = (req.headers.get("x-fv-if-none-match") ?? req.headers.get("if-none-match")) === "*";
   if (!ifMatch && !create) throw new ApiError(428, "precondition-required");
   const { version } = await (await store()).put(sidecarPath(id), body, ifMatch ? { ifMatch } : { ifNoneMatch: "*" });
   return json({ version });

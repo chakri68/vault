@@ -715,15 +715,26 @@ export class VaultEngine {
       const parts = await this.local.getObject(id);
       const label = await this.local.getSidecar(id);
       if (!parts || !label) return; // not everything is on this device: let the classic path sort it out
+      // Label first, and alone, because a store that can't stage says so with a
+      // 501 — and the server reads the whole body before the route gets to answer.
+      // Staging the parts up front would upload every megabyte only to have it
+      // thrown away and then sent again by the one-by-one path below. The label is
+      // 4 KB, so that is what we find out on.
       const items: Array<[StageItem, Bytes]> = [
-        ...parts.map((data, part): [StageItem, Bytes] => [{ kind: "part", id, part }, data]),
         [{ kind: "label", id }, label],
+        ...parts.map((data, part): [StageItem, Bytes] => [{ kind: "part", id, part }, data]),
       ];
-      const tokens = await Promise.all(items.map(([item, data]) => remote.stage!(item, data)));
-      if (tokens.some((t) => t === null)) {
+      const first = await remote.stage!(items[0][0], items[0][1]);
+      if (first === null) {
         this.batchUnsupported = true;
         return;
       }
+      const rest = await Promise.all(items.slice(1).map(([item, data]) => remote.stage!(item, data)));
+      if (rest.some((t) => t === null)) {
+        this.batchUnsupported = true;
+        return;
+      }
+      const tokens = [first, ...rest];
       items.forEach(([item], i) => staged.push({ ...item, token: tokens[i]! }));
     }
     if (staged.length === 0) return;

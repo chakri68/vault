@@ -178,6 +178,29 @@ describe.skipIf(!BASE)("API security, over HTTP", () => {
     expect((await admin.api.listObjects()).some((o) => o.id === victim.id)).toBe(false);
   });
 
+  /**
+   * Create-only must not travel as a real `If-None-Match: *`. Next revalidates a
+   * route handler's own 200 against the request's conditional headers, and the
+   * wildcard matches any entity, so the response comes back as a bodyless 304 —
+   * on a PUT, where a failed precondition is supposed to be a 412. The sidecar
+   * lands and the client is told the write failed. Only a test over real HTTP
+   * sees this; the framework is the thing misbehaving, not our handler.
+   */
+  it("creating a sidecar answers 200, never a 304 (§9.4)", async () => {
+    const sidecar = () => {
+      const b = new Uint8Array(160) as Bytes;
+      b.set([0x46, 0x56, 0x4d, 0x44]); // "FVMD"
+      return b;
+    };
+    const id = newId();
+    const created = await admin.api.putSidecar(id, sidecar(), {});
+    expect(created.version).toBeTruthy(); // a 304 has no body, so this throws instead
+
+    // and the precondition is really enforced rather than quietly swallowed:
+    // a second create-only write loses to the one already there
+    expect(await status(admin.api.putSidecar(id, sidecar(), {}))).toBe(412);
+  });
+
   it("a store that can't stage says so, and the engine carries on the long way", async () => {
     // local-fs has no staging: 501, never a silent success
     expect(await status(admin.api.commitStaged([{ kind: "index", token: "x" }, { kind: "label", id: newId(), token: "y" }], {}))).toBe(501);

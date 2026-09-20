@@ -21,7 +21,10 @@ export const PUT = api({ auth: "session", limit: LIMITS.indexPut, write: true, m
   if (body.length < 64 || body[0] !== 0x46 || body[1] !== 0x56 || body[2] !== 0x49 || body[3] !== 0x58) {
     throw new ApiError(400, "bad-request"); // "FVIX"
   }
-  const create = req.headers.get("if-none-match") === "*";
+  // See the note in api/objects/label: a real `If-None-Match: *` comes back to the
+  // client as a 304 because Next revalidates the route's own 200 against it. This
+  // one only fires on the very first index write — vault setup, and restore.
+  const create = (req.headers.get("x-fv-if-none-match") ?? req.headers.get("if-none-match")) === "*";
   if (!ifMatch && !create) throw new ApiError(428, "precondition-required");
   const { version } = await (await store()).put(INDEX_PATH, body, ifMatch ? { ifMatch } : { ifNoneMatch: "*" });
   return json({ version });

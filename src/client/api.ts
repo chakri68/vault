@@ -80,7 +80,12 @@ export class ApiClient implements VaultRemote {
       headers["content-type"] = "application/json";
     }
     if (opts.ifMatch) headers["if-match"] = opts.ifMatch;
-    if (opts.ifNoneMatch) headers["if-none-match"] = opts.ifNoneMatch;
+    // Deliberately NOT `if-none-match`. Next applies conditional-GET semantics to
+    // a route handler's response, and `If-None-Match: *` matches any entity, so a
+    // successful 200 comes back to us as a bodyless 304 — on a PUT, where RFC 9110
+    // says a failed precondition is a 412. The write lands and the client is told
+    // it failed. Our own header name means nothing upstream touches it.
+    if (opts.ifNoneMatch) headers["x-fv-if-none-match"] = opts.ifNoneMatch;
     if ((opts.write || opts.csrf) && this.csrf) headers["x-fv-csrf"] = this.csrf;
     if (opts.write) {
       if (!this.writeAuthKey) throw new HttpError(403, "locked");
